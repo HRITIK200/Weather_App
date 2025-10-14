@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Weather App</title>
+
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet" />
+
+  <!-- Font Awesome for icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🌤️ Weather App</h1>
+    </header>
+
+    <!-- Search Section -->
+    <section class="search-box">
+      <input type="text" id="cityInput" placeholder="Enter city name..." />
+      <button id="searchBtn"><i class="fa-solid fa-magnifying-glass"></i></button>
+    </section>
+
+    <!-- Weather Info Section -->
+    <section class="weather-info" id="weatherInfo">
+      <div class="city-name">
+        <h2 id="city">City Name</h2>
+      </div>
+      <div class="temp">
+        <h3 id="temperature">--°C</h3>
+      </div>
+      <div class="desc">
+        <p id="description">Weather description</p>
+      </div>
+      <div class="extra">
+        <p>🌡️ Feels Like: <span id="feelsLike">--°C</span></p>
+        <p>💧 Humidity: <span id="humidity">--%</span></p>
+        <p>🌬️ Wind: <span id="wind">-- km/h</span></p>
+      </div>
+      <div class="icon">
+        <img id="weatherIcon" src="" alt="Weather Icon" />
+      </div>
+    </section>
+
+    
+
+    <!-- Error Message -->
+    <section id="errorMsg" class="error hidden">
+      <p>⚠️ City not found. Please try again.</p>
+    </section>
+  </div>
+
+  <!-- JS -->
+  <script src="script.js"></script>
+</body>
+</html>
