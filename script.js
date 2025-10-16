@@ -27,6 +27,8 @@ async function getWeather(city) {
 
     const data = await response.json();
     displayWeather(data);
+    getForecast(data.coord.lat, data.coord.lon);
+
   } catch (error) {
     showError();
   }
@@ -86,6 +88,12 @@ function displayWeather(data) {
       body.style.background = "linear-gradient(135deg, #74ebd5, #ACB6E5)";
       break;
   }
+  // 🕒 Display Local Time
+  const timezoneOffset = data.timezone; // in seconds
+  const localTime = new Date(Date.now() + timezoneOffset * 1000);
+  const timeString = localTime.toUTCString().slice(-12, -4);
+  document.getElementById("localTime").textContent = `Local Time: ${timeString}`;
+
 }
 
 // 📅 5-Day Forecast Function
@@ -129,6 +137,94 @@ function displayForecast(data) {
 
   forecastSection.classList.remove("hidden");
 }
+// 🕐 True Hourly Forecast (Every Hour)
+async function getHourlyForecast(lat, lon) {
+  try {
+    const url = `https://api.openweathermap.org/data/3.0/onecall?lat=${lat}&lon=${lon}&exclude=current,minutely,daily,alerts&units=metric&appid=${apiKey}`;
+    const response = await fetch(url);
+    const data = await response.json();
+
+    // Send first 24 hours of data
+    displayHourlyForecast(data.hourly.slice(0, 24));
+  } catch (error) {
+    console.error("Hourly forecast fetch failed:", error);
+  }
+}
+
+// Render hourly cards
+function displayHourlyForecast(hourlyData) {
+  const hourlyContainer = document.getElementById("hourlyContainer");
+  const hourlySection = document.getElementById("hourlyForecast");
+  hourlyContainer.innerHTML = "";
+
+  hourlyData.forEach((hourItem) => {
+    const date = new Date(hourItem.dt * 1000);
+    const hour = date.getHours();
+    const timeLabel = hour === 0 ? "12 AM" :
+                      hour < 12 ? `${hour} AM` :
+                      hour === 12 ? "12 PM" :
+                      `${hour - 12} PM`;
+
+    const icon = hourItem.weather[0].icon;
+    const temp = Math.round(hourItem.temp);
+
+    const card = `
+      <div class="hourly-card">
+        <p>${timeLabel}</p>
+        <img src="https://openweathermap.org/img/wn/${icon}.png" alt="icon">
+        <p>${temp}°C</p>
+      </div>
+    `;
+    hourlyContainer.insertAdjacentHTML("beforeend", card);
+  });
+
+  hourlySection.classList.remove("hidden");
+}
+
+
+
+// 📅 5-Day Forecast Function
+async function getForecast(lat, lon) {
+  try {
+    const url = `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&appid=${apiKey}&units=metric`;
+    const response = await fetch(url);
+    const data = await response.json();
+
+    displayForecast(data);
+  } catch (error) {
+    console.log("Forecast fetch failed:", error);
+  }
+}
+
+// Function to Display 5-Day Forecast
+function displayForecast(data) {
+  const forecastContainer = document.getElementById("forecastContainer");
+  const forecastSection = document.getElementById("forecast");
+  forecastContainer.innerHTML = "";
+
+  // Filter every 8th item (3-hour interval × 8 = 24h)
+  const dailyForecasts = data.list.filter((item, index) => index % 8 === 0);
+
+  dailyForecasts.slice(0, 5).forEach((day) => {
+    const date = new Date(day.dt_txt);
+    const dayName = date.toLocaleDateString("en-US", { weekday: "short" });
+    const icon = day.weather[0].icon;
+    const minTemp = Math.round(day.main.temp_min);
+    const maxTemp = Math.round(day.main.temp_max);
+
+    const dayCard = `
+      <div class="forecast-day">
+        <p>${dayName}</p>
+        <img src="https://openweathermap.org/img/wn/${icon}.png" alt="icon">
+        <p>${minTemp}°C / ${maxTemp}°C</p>
+      </div>
+    `;
+    forecastContainer.insertAdjacentHTML("beforeend", dayCard);
+  });
+
+  forecastSection.classList.remove("hidden");
+}
+
 
 
 // Function to Show Error
@@ -179,6 +275,9 @@ async function getWeatherByCoordinates(lat, lon) {
     const response = await fetch(url);
     const data = await response.json();
     displayWeather(data);
+    getForecast(data.coord.lat, data.coord.lon);
+   getHourlyForecast(data.coord.lat, data.coord.lon);
+
 
   } catch (error) {
     showError();

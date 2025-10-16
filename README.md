@@ -32,12 +32,15 @@ This project demonstrates **API integration, DOM manipulation, asynchronous Java
 
 ---
 
-## 🧠 Key Features
-✅ Live weather for any city  
-✅ Auto-detect current location weather (Geolocation API)  
-✅ Dynamic backgrounds according to weather condition  
-✅ “Feels like” emojis (🔥 ❄️ 🌤️)  
-✅ Responsive card-based design for all devices  
+## 🧩 Features
+✅ Live weather updates for any city  
+✅ 5-day forecast view   
+✅ Dynamic background based on weather condition  
+✅ Auto-location detection (Geolocation API)  
+✅ Local time display  
+✅ Smooth animations and responsive design  
+✅ Error handling for invalid inputs  
+
 
 ---
 
