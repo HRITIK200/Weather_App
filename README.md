@@ -43,6 +43,17 @@ This project demonstrates **API integration, DOM manipulation, asynchronous Java
 
 
 ---
+## 🖼️ Screenshots
+
+1. Home Page 
+   ![Home Page](./screenshots/Homepage.jpg)
+
+2. Search bar 
+   ![Search bar](./screenshots/search.jpg)
+
+3. Auto Detect Location
+   ![Auto Detect Location](./screenshots/autodetectlocation.jpg)
+---
 
 ## 🧾 Folder Structure
 weather-app/
