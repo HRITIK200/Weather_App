@@ -1,0 +1,179 @@
+{
+	"info": {
+		"_postman_id": "c92a9cf2-1b12-4217-bf41-6e1074e64fbd",
+		"name": "Weather App Full-Stack API Suite (Production)",
+		"description": "Production API test suite for the Weather App PERN stack including Indian States, AQI, and City Comparison.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "System Health",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:5000/api/health",
+					"protocol": "http",
+					"host": ["localhost"],
+					"port": "5000",
+					"path": ["api", "health"]
+				}
+			}
+		},
+		{
+			"name": "Get Weather by City (with AQI & Alerts)",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:5000/api/weather?city=Delhi",
+					"protocol": "http",
+					"host": ["localhost"],
+					"port": "5000",
+					"path": ["api", "weather"],
+					"query": [{ "key": "city", "value": "Delhi" }]
+				}
+			}
+		},
+		{
+			"name": "Get Weather by Coordinates",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:5000/api/weather/coordinates?lat=28.6139&lon=77.2090",
+					"protocol": "http",
+					"host": ["localhost"],
+					"port": "5000",
+					"path": ["api", "weather", "coordinates"],
+					"query": [
+						{ "key": "lat", "value": "28.6139" },
+						{ "key": "lon", "value": "77.2090" }
+					]
+				}
+			}
+		},
+		{
+			"name": "Compare Weather (Delhi vs Mumbai)",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:5000/api/weather/compare?city1=Delhi&city2=Mumbai",
+					"protocol": "http",
+					"host": ["localhost"],
+					"port": "5000",
+					"path": ["api", "weather", "compare"],
+					"query": [
+						{ "key": "city1", "value": "Delhi" },
+						{ "key": "city2", "value": "Mumbai" }
+					]
+				}
+			}
+		},
+		{
+			"name": "Get Forecast (Hourly & Daily)",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:5000/api/weather/forecast?city=Delhi",
+					"protocol": "http",
+					"host": ["localhost"],
+					"port": "5000",
+					"path": ["api", "weather", "forecast"],
+					"query": [{ "key": "city", "value": "Delhi" }]
+				}
+			}
+		},
+		{
+			"name": "Get Indian States and Metros List",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:5000/api/favorites/indian-states",
+					"protocol": "http",
+					"host": ["localhost"],
+					"port": "5000",
+					"path": ["api", "favorites", "indian-states"]
+				}
+			}
+		},
+		{
+			"name": "Get Favorites by Region (India)",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:5000/api/favorites?region=india",
+					"protocol": "http",
+					"host": ["localhost"],
+					"port": "5000",
+					"path": ["api", "favorites"],
+					"query": [{ "key": "region", "value": "india" }]
+				}
+			}
+		},
+		{
+			"name": "Get Search History",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:5000/api/history",
+					"protocol": "http",
+					"host": ["localhost"],
+					"port": "5000",
+					"path": ["api", "history"]
+				}
+			}
+		},
+		{
+			"name": "Delete Search History Item",
+			"request": {
+				"method": "DELETE",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:5000/api/history/1",
+					"protocol": "http",
+					"host": ["localhost"],
+					"port": "5000",
+					"path": ["api", "history", "1"]
+				}
+			}
+		},
+		{
+			"name": "Add Favorite City",
+			"request": {
+				"method": "POST",
+				"header": [{ "key": "Content-Type", "value": "application/json" }],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"city_name\": \"Bengaluru\",\n  \"state\": \"Karnataka\",\n  \"country\": \"IN\",\n  \"region\": \"india\",\n  \"lat\": 12.9716,\n  \"lon\": 77.5946\n}"
+				},
+				"url": {
+					"raw": "http://localhost:5000/api/favorites",
+					"protocol": "http",
+					"host": ["localhost"],
+					"port": "5000",
+					"path": ["api", "favorites"]
+				}
+			}
+		},
+		{
+			"name": "Delete Favorite City",
+			"request": {
+				"method": "DELETE",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:5000/api/favorites/1",
+					"protocol": "http",
+					"host": ["localhost"],
+					"port": "5000",
+					"path": ["api", "favorites", "1"]
+				}
+			}
+		}
+	]
+}
