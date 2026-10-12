@@ -252,21 +252,37 @@ export const getWeatherForecast = async (req, res, next) => {
       });
     }
 
-    // Determine coordinates for high-precision 1-hour forecast
+    // Determine coordinates and timezone offset for high-precision forecast
     const targetLat = lat ? parseFloat(lat) : forecastRaw.city?.coord?.lat;
     const targetLon = lon ? parseFloat(lon) : forecastRaw.city?.coord?.lon;
+    const cityOffsetSeconds = forecastRaw.city?.timezone || 0;
 
-    // 1. 3-Hour Interval Slots from OpenWeather (Classical synoptic 8 slots)
-    const hourly_3h = forecastRaw.list.slice(0, 8).map((item, idx) => {
-      const dt = new Date(item.dt * 1000);
-      const hours = dt.getHours();
+    const cityNow = new Date(Date.now() + cityOffsetSeconds * 1000);
+    const currentCityDateStr = `${cityNow.getUTCFullYear()}-${String(cityNow.getUTCMonth() + 1).padStart(2, '0')}-${String(cityNow.getUTCDate()).padStart(2, '0')}`;
+    const nowMs = Date.now();
+
+    // 1. 3-Hour Interval Slots from OpenWeather (aligned to city local timezone)
+    const hourly_3h_raw = forecastRaw.list.slice(0, 10).map((item, idx) => {
+      const localSlotDate = new Date((item.dt + cityOffsetSeconds) * 1000);
+      const hours = localSlotDate.getUTCHours();
       const label = hours === 0 ? '12 AM' : hours < 12 ? `${hours} AM` : hours === 12 ? '12 PM' : `${hours - 12} PM`;
+
+      const itemDateStr = `${localSlotDate.getUTCFullYear()}-${String(localSlotDate.getUTCMonth() + 1).padStart(2, '0')}-${String(localSlotDate.getUTCDate()).padStart(2, '0')}`;
+      let dayLabel = 'Today';
+      if (itemDateStr < currentCityDateStr) dayLabel = 'Yesterday';
+      else if (itemDateStr > currentCityDateStr) dayLabel = 'Tomorrow';
+
+      const slotDtMs = item.dt * 1000;
+      const isPast = (slotDtMs + 1800000) < nowMs;
 
       return {
         time: label,
         fullTime: item.dt_txt,
+        dt: item.dt,
         hourIndex: idx,
-        isNow: idx === 0,
+        hourOfDay: hours,
+        dayLabel,
+        isPast,
         temp: Math.round(item.main.temp),
         feels_like: Math.round(item.main.feels_like),
         humidity: item.main.humidity,
@@ -278,19 +294,38 @@ export const getWeatherForecast = async (req, res, next) => {
       };
     });
 
-    // 2. True 1-Hour Resolution Forecast (Every single hour for 24 hours)
+    // Mark exactly the closest slot as isCurrent
+    let closest3hIdx = 0;
+    let minDiff3h = Infinity;
+    hourly_3h_raw.forEach((slot, idx) => {
+      const diff = Math.abs(slot.dt * 1000 - nowMs);
+      if (diff < minDiff3h) {
+        minDiff3h = diff;
+        closest3hIdx = idx;
+      }
+    });
+
+    const hourly_3h = hourly_3h_raw.slice(0, 8).map((slot, idx) => ({
+      ...slot,
+      isNow: idx === closest3hIdx,
+      isCurrent: idx === closest3hIdx,
+      isPast: idx < closest3hIdx,
+      isFuture: idx > closest3hIdx,
+    }));
+
+    // 2. True 1-Hour Resolution Forecast (Every single hour with accurate timezone)
     let hourly_1h = null;
     if (targetLat && targetLon) {
       try {
-        hourly_1h = await weatherService.fetchHourlyOneHourForecast(targetLat, targetLon);
+        hourly_1h = await weatherService.fetchHourlyOneHourForecast(targetLat, targetLon, cityOffsetSeconds);
       } catch (e) {
         console.warn('⚠️ [forecast]: 1h fetch error, using interpolation');
       }
     }
 
-    // Fallback: smooth cubic/linear interpolation if needed
+    // Fallback: smooth interpolation using city timezone offset if needed
     if (!hourly_1h || hourly_1h.length === 0) {
-      hourly_1h = weatherService.interpolateHourlySlots(hourly_3h);
+      hourly_1h = weatherService.interpolateHourlySlots(hourly_3h, cityOffsetSeconds);
     }
 
     // Default 'hourly' is the 1-hour sequence (every hour)

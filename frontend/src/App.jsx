@@ -276,12 +276,18 @@ export default function App() {
       favorites.some((f) => f.city_name.toLowerCase() === weather.name.toLowerCase())
   );
 
-  const backgroundGradient = getWeatherBackground(weather?.main || 'clear');
+  const isDay = weather?.icon ? weather.icon.endsWith('d') : true;
+  const backgroundGradient = getWeatherBackground(weather?.main || 'clear', isDay);
 
   return (
     <div
       className={`min-h-screen bg-gradient-to-br ${backgroundGradient} transition-colors duration-1000 py-3 sm:py-6 px-3 sm:px-6 lg:px-8 text-slate-100 font-sans relative overflow-x-hidden selection:bg-amber-500 selection:text-black`}
     >
+      {/* Dynamic Multi-Tone Ambient Light Glows (Warm Amber, Radiant Violet, Celestial Emerald) */}
+      <div className="fixed top-0 right-10 w-96 h-96 bg-amber-500/10 rounded-full blur-[140px] pointer-events-none -z-0" />
+      <div className="fixed bottom-10 left-10 w-[28rem] h-[28rem] bg-violet-600/15 rounded-full blur-[150px] pointer-events-none -z-0" />
+      <div className="fixed top-1/2 left-1/3 w-80 h-80 bg-teal-500/10 rounded-full blur-[130px] pointer-events-none -z-0" />
+
       {/* Ambient Particle Canvas FX (Rain / Snow / Dust) */}
       <WeatherParticleCanvas
         condition={weather?.main || 'clear'}
@@ -376,6 +382,7 @@ export default function App() {
                   hourly={forecast.hourly}
                   hourly1h={forecast.hourly_1h}
                   hourly3h={forecast.hourly_3h}
+                  weather={weather}
                   unit={unit}
                 />
               )}

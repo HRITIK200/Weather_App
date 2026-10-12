@@ -20,6 +20,7 @@ export const HourlyForecast = ({
   hourly = [],
   hourly1h = [],
   hourly3h = [],
+  weather,
   unit,
 }) => {
   const [intervalMode, setIntervalMode] = useState('1h'); // '1h' or '3h'
@@ -38,23 +39,69 @@ export const HourlyForecast = ({
       ? hourly3h
       : hourly;
 
-  // Filter dataset based on view mode (Upcoming, Full Timeline, or Past Hours)
-  const activeHourlyList = React.useMemo(() => {
+  // Determine city local hour (0 - 23) from weather.local_time or fallback to browser local hour
+  const currentLocalHour = React.useMemo(() => {
+    if (weather?.local_time) {
+      // Local time string: e.g. "1:02 PM", "01:02 PM", "13:02"
+      const match = weather.local_time.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+      if (match) {
+        let hr = parseInt(match[1], 10);
+        const ampm = match[3]?.toUpperCase();
+        if (ampm === 'PM' && hr < 12) hr += 12;
+        if (ampm === 'AM' && hr === 12) hr = 0;
+        return hr;
+      }
+    }
+    return new Date().getHours();
+  }, [weather?.local_time]);
+
+  // Synchronize the dataset: Ensure the card matching the current local hour is flagged as NOW
+  const synchronizedDataset = React.useMemo(() => {
     if (!rawDataset || rawDataset.length === 0) return [];
 
+    let matchedIdx = -1;
+
+    // 1. Try finding today's card matching currentLocalHour
+    matchedIdx = rawDataset.findIndex(
+      (h) => (h.dayLabel === 'Today' || !h.dayLabel) && h.hourOfDay === currentLocalHour
+    );
+
+    // 2. If not found, match by hourOfDay alone
+    if (matchedIdx === -1) {
+      matchedIdx = rawDataset.findIndex((h) => h.hourOfDay === currentLocalHour);
+    }
+
+    // 3. Fallback to existing isCurrent / isNow flag if present
+    if (matchedIdx === -1) {
+      matchedIdx = rawDataset.findIndex((h) => h.isCurrent || h.isNow);
+    }
+
+    if (matchedIdx === -1) matchedIdx = 0;
+
+    return rawDataset.map((slot, idx) => ({
+      ...slot,
+      isCurrent: idx === matchedIdx,
+      isNow: idx === matchedIdx,
+      isPast: idx < matchedIdx,
+      isFuture: idx > matchedIdx,
+    }));
+  }, [rawDataset, currentLocalHour]);
+
+  // Filter dataset based on view mode (Upcoming, Full Timeline, or Earlier Today)
+  const activeHourlyList = React.useMemo(() => {
+    if (!synchronizedDataset || synchronizedDataset.length === 0) return [];
+
     if (filterMode === 'upcoming') {
-      // From current hour onwards (if flagged), otherwise whole list
-      const upcoming = rawDataset.filter((h) => !h.isPast);
-      return upcoming.length > 0 ? upcoming : rawDataset;
+      const upcoming = synchronizedDataset.filter((h) => !h.isPast);
+      return upcoming.length > 0 ? upcoming : synchronizedDataset;
     }
     if (filterMode === 'past') {
-      // Past hours including current hour
-      const past = rawDataset.filter((h) => h.isPast || h.isCurrent);
-      return past.length > 0 ? past : rawDataset;
+      const past = synchronizedDataset.filter((h) => h.isPast || h.isCurrent);
+      return past.length > 0 ? past : synchronizedDataset;
     }
-    // 'all': full timeline with past & future
-    return rawDataset;
-  }, [rawDataset, filterMode]);
+    // 'all': full timeline
+    return synchronizedDataset;
+  }, [synchronizedDataset, filterMode]);
 
   // Find index of current hour
   const currentHourIndex = activeHourlyList.findIndex((h) => h.isCurrent || h.isNow);
@@ -99,7 +146,7 @@ export const HourlyForecast = ({
   const minTempSlot = activeHourlyList.find((h) => h.temp === minTemp);
   const maxRainSlot = [...activeHourlyList].sort((a, b) => (b.pop || 0) - (a.pop || 0))[0];
 
-  const hasPastHours = rawDataset.some((h) => h.isPast);
+  const hasPastHours = synchronizedDataset.some((h) => h.isPast);
 
   return (
     <div className="glass-card rounded-3xl p-5 sm:p-7 mb-6 overflow-hidden relative border border-white/10 shadow-2xl">
@@ -118,12 +165,12 @@ export const HourlyForecast = ({
               <h3 className="text-base sm:text-lg font-bold text-white tracking-wide">
                 Hourly Forecast
               </h3>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold tracking-wider uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold tracking-wider uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1 shrink-0">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                Live Present Hour Aligned
+                Live Hour Aligned
               </span>
             </div>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <p className="text-xs text-slate-300 mt-0.5 font-medium">
               Access previous hours earlier today or upcoming hours ahead
             </p>
           </div>
@@ -201,7 +248,7 @@ export const HourlyForecast = ({
             <button
               type="button"
               onClick={handleCenterOnNow}
-              className="p-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 transition-all flex items-center gap-1 text-xs font-bold"
+              className="p-2 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 transition-all flex items-center gap-1 text-xs font-bold shadow-sm"
               title="Jump directly to current hour"
             >
               <Target className="w-3.5 h-3.5" />
@@ -228,10 +275,10 @@ export const HourlyForecast = ({
         </div>
       </div>
 
-      {/* Atmospheric Summary Metrics Strip */}
+      {/* Atmospheric Summary Metrics Strip with High-Contrast Multi-Tone Cards */}
       <div className="relative z-10 grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-5 text-xs font-semibold">
         {maxTempSlot && (
-          <div className="flex items-center gap-2 p-2.5 rounded-2xl bg-amber-500/15 border border-amber-500/25 text-amber-300 shadow-sm">
+          <div className="flex items-center gap-2 p-2.5 rounded-2xl bg-gradient-to-r from-amber-500/20 to-orange-500/10 border border-amber-400/35 text-amber-200 shadow-sm backdrop-blur-md">
             <Flame className="w-4 h-4 text-amber-400 shrink-0" />
             <span className="truncate">
               Peak: <strong>{formatTemperature(maxTemp, unit)}</strong> at {maxTempSlot.time}
@@ -239,16 +286,16 @@ export const HourlyForecast = ({
           </div>
         )}
         {minTempSlot && (
-          <div className="flex items-center gap-2 p-2.5 rounded-2xl bg-indigo-500/15 border border-indigo-500/25 text-indigo-300 shadow-sm">
-            <Snowflake className="w-4 h-4 text-indigo-400 shrink-0" />
+          <div className="flex items-center gap-2 p-2.5 rounded-2xl bg-gradient-to-r from-indigo-500/20 to-purple-500/10 border border-indigo-400/35 text-indigo-200 shadow-sm backdrop-blur-md">
+            <Snowflake className="w-4 h-4 text-indigo-300 shrink-0" />
             <span className="truncate">
               Low: <strong>{formatTemperature(minTemp, unit)}</strong> at {minTempSlot.time}
             </span>
           </div>
         )}
         {maxRainSlot && (
-          <div className="flex items-center gap-2 p-2.5 rounded-2xl bg-teal-500/15 border border-teal-500/25 text-teal-300 shadow-sm">
-            <Umbrella className="w-4 h-4 text-teal-400 shrink-0" />
+          <div className="flex items-center gap-2 p-2.5 rounded-2xl bg-gradient-to-r from-teal-500/20 to-emerald-500/10 border border-teal-400/35 text-teal-200 shadow-sm backdrop-blur-md">
+            <Umbrella className="w-4 h-4 text-teal-300 shrink-0" />
             <span className="truncate">
               Max Rain: <strong>{maxRainSlot.pop || 0}%</strong> at {maxRainSlot.time}
             </span>
@@ -275,21 +322,22 @@ export const HourlyForecast = ({
               onClick={() => setSelectedHour(item)}
               className={`flex flex-col items-center justify-between p-3.5 sm:p-4 rounded-3xl shrink-0 w-28 sm:w-32 text-center transition-all cursor-pointer relative group border ${
                 isCurrent
-                  ? 'bg-gradient-to-b from-emerald-500/20 via-teal-900/40 to-slate-900/80 border-emerald-400/90 ring-2 ring-emerald-400/50 shadow-2xl shadow-emerald-500/30 scale-[1.03] z-20'
+                  ? 'bg-gradient-to-b from-emerald-500/30 via-teal-900/50 to-slate-900/90 border-emerald-400 ring-2 ring-emerald-400/60 shadow-2xl shadow-emerald-500/40 scale-[1.04] z-20'
                   : isSelected
-                  ? 'bg-white/20 border-cyan-400 ring-2 ring-cyan-400/30 shadow-xl scale-[1.02] z-10'
+                  ? 'bg-gradient-to-b from-cyan-500/25 via-blue-900/40 to-slate-900/80 border-cyan-400 ring-2 ring-cyan-400/50 shadow-xl scale-[1.02] z-10'
                   : isPast
-                  ? 'bg-black/30 border-white/5 opacity-70 hover:opacity-100 hover:bg-white/10 hover:border-white/15'
+                  ? 'bg-slate-900/65 border-white/10 opacity-75 hover:opacity-100 hover:bg-slate-800/70 hover:border-white/20'
                   : isDayHour
-                  ? 'bg-amber-500/5 hover:bg-amber-500/15 border-amber-500/20 hover:border-amber-500/30'
-                  : 'bg-indigo-950/30 hover:bg-indigo-900/40 border-indigo-500/20 hover:border-indigo-500/30'
+                  ? 'bg-gradient-to-b from-amber-500/15 via-orange-500/10 to-slate-900/75 border-amber-400/25 shadow-lg shadow-amber-950/20 hover:border-amber-300/50 hover:bg-amber-500/20'
+                  : 'bg-gradient-to-b from-indigo-600/20 via-purple-950/25 to-slate-900/80 border-indigo-400/25 shadow-lg shadow-indigo-950/30 hover:border-indigo-300/50 hover:bg-indigo-600/25'
               }`}
             >
               {/* Top Tag: Now / Past / Upcoming */}
               <div className="mb-1 w-full">
                 {isCurrent ? (
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black tracking-wider uppercase bg-emerald-400 text-slate-950 shadow-md animate-pulse block truncate">
-                    Present Hour
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-wider uppercase bg-emerald-400 text-slate-950 shadow-md flex items-center justify-center gap-1 shrink-0 whitespace-nowrap mx-auto">
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-950 animate-ping inline-block shrink-0" />
+                    NOW
                   </span>
                 ) : isPast ? (
                   <span className="text-[10px] font-bold text-slate-400 flex items-center justify-center gap-0.5">

@@ -215,7 +215,7 @@ const mapWmoCode = (code, isDay = true) => {
 /**
  * Fetch True 1-Hour Resolution Hourly Forecast (with Past Hours from earlier today & Future 24-36 Hours)
  */
-export const fetchHourlyOneHourForecast = async (lat, lon) => {
+export const fetchHourlyOneHourForecast = async (lat, lon, cityOffsetSeconds = 0) => {
   try {
     const res = await axios.get('https://api.open-meteo.com/v1/forecast', {
       params: {
@@ -226,25 +226,50 @@ export const fetchHourlyOneHourForecast = async (lat, lon) => {
         past_days: 1,
         forecast_days: 2,
       },
-      timeout: 5000,
+      headers: {
+        'User-Agent': 'WeatherAppPro/2.0 (contact@weatherapp.dev)',
+      },
+      timeout: 6500,
     });
 
     const data = res.data?.hourly;
     if (!data || !data.time || data.time.length === 0) return null;
 
-    const offsetSeconds = res.data.utc_offset_seconds || 0;
-    const localNow = new Date(Date.now() + offsetSeconds * 1000);
-    const targetHourStr = localNow.toISOString().slice(0, 13) + ':00';
+    // Use Open-Meteo's reported offset or the city's verified timezone offset in seconds
+    const offsetSec = (typeof res.data.utc_offset_seconds === 'number')
+      ? res.data.utc_offset_seconds
+      : (cityOffsetSeconds || 0);
+
+    // Calculate city local date & time by shifting UTC ms by offset
+    const localNow = new Date(Date.now() + offsetSec * 1000);
+    const yyyy = localNow.getUTCFullYear();
+    const mm = String(localNow.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(localNow.getUTCDate()).padStart(2, '0');
+    const hh = String(localNow.getUTCHours()).padStart(2, '0');
+    const targetHourStr = `${yyyy}-${mm}-${dd}T${hh}:00`;
+    const nowDatePart = `${yyyy}-${mm}-${dd}`;
 
     let currentIdx = data.time.indexOf(targetHourStr);
     if (currentIdx === -1) {
-      currentIdx = Math.max(0, Math.min(data.time.length - 1, 36));
+      // Find closest hour slot on the same date or closest in the array
+      let minDiff = Infinity;
+      currentIdx = 24; // default near today's start
+      for (let i = 0; i < data.time.length; i++) {
+        if (data.time[i].startsWith(nowDatePart)) {
+          const slotHour = parseInt(data.time[i].slice(11, 13), 10);
+          const diff = Math.abs(slotHour - parseInt(hh, 10));
+          if (diff < minDiff) {
+            minDiff = diff;
+            currentIdx = i;
+          }
+        }
+      }
     }
 
     // Determine current hour of day in local time (0 - 23)
-    const currentLocalHour = parseInt(targetHourStr.slice(11, 13), 10) || 12;
+    const currentLocalHour = parseInt(data.time[currentIdx].slice(11, 13), 10);
 
-    // Start from today's midnight (12 AM) so earlier hours of today are available
+    // Start from today's midnight (12 AM) so earlier hours of today are fully available
     const startIdx = Math.max(0, currentIdx - currentLocalHour);
     // Include up to 28 hours into the future
     const endIdx = Math.min(data.time.length, currentIdx + 28);
@@ -256,13 +281,12 @@ export const fetchHourlyOneHourForecast = async (lat, lon) => {
       const isDay = hours >= 6 && hours <= 18;
       const weatherInfo = mapWmoCode(data.weather_code[i], isDay);
 
-      const isCurrent = i === currentIdx;
-      const isPast = i < currentIdx;
-      const isFuture = i > currentIdx;
+      const isCurrent = (i === currentIdx);
+      const isPast = (i < currentIdx);
+      const isFuture = (i > currentIdx);
       const diffFromNow = i - currentIdx;
 
       const datePart = data.time[i].slice(0, 10);
-      const nowDatePart = targetHourStr.slice(0, 10);
       let dayLabel = 'Today';
       if (datePart < nowDatePart) dayLabel = 'Yesterday';
       else if (datePart > nowDatePart) dayLabel = 'Tomorrow';
@@ -297,35 +321,66 @@ export const fetchHourlyOneHourForecast = async (lat, lon) => {
 };
 
 /**
- * Fallback: Smooth 1-hour interpolation from 3-hour slots
+ * Fallback: Smooth 1-hour interpolation from 3-hour slots with accurate city timezone alignment
  */
-export const interpolateHourlySlots = (threeHourSlots) => {
+export const interpolateHourlySlots = (threeHourSlots, cityOffsetSeconds = 0) => {
   if (!threeHourSlots || threeHourSlots.length === 0) return [];
   const result = [];
+  const nowMs = Date.now();
+  const cityNow = new Date(nowMs + cityOffsetSeconds * 1000);
+  const currentCityHour = cityNow.getUTCHours();
+  const nowDatePart = `${cityNow.getUTCFullYear()}-${String(cityNow.getUTCMonth() + 1).padStart(2, '0')}-${String(cityNow.getUTCDate()).padStart(2, '0')}`;
 
   for (let i = 0; i < threeHourSlots.length; i++) {
     const cur = threeHourSlots[i];
+    const curDt = cur.dt ? cur.dt * 1000 : nowMs + i * 3 * 3600000;
+    const curLocalDate = new Date(curDt + cityOffsetSeconds * 1000);
+    const curHours = curLocalDate.getUTCHours();
+    const curLabel = curHours === 0 ? '12 AM' : curHours < 12 ? `${curHours} AM` : curHours === 12 ? '12 PM' : `${curHours - 12} PM`;
+
+    const itemDatePart = `${curLocalDate.getUTCFullYear()}-${String(curLocalDate.getUTCMonth() + 1).padStart(2, '0')}-${String(curLocalDate.getUTCDate()).padStart(2, '0')}`;
+    let dayLabel = 'Today';
+    if (itemDatePart < nowDatePart) dayLabel = 'Yesterday';
+    else if (itemDatePart > nowDatePart) dayLabel = 'Tomorrow';
+
     result.push({
       ...cur,
+      time: curLabel,
+      hourOfDay: curHours,
       hourIndex: result.length,
-      isNow: result.length === 0,
+      dayLabel,
+      temp: cur.temp,
+      feels_like: cur.feels_like,
+      humidity: cur.humidity,
+      pop: cur.pop,
+      wind_speed: cur.wind_speed,
+      description: cur.description,
+      main: cur.main,
+      icon: cur.icon,
     });
 
     // Interpolate 2 in-between hours if there is a next slot
     if (i < threeHourSlots.length - 1 && result.length < 24) {
       const next = threeHourSlots[i + 1];
+      const nextDt = next.dt ? next.dt * 1000 : curDt + 3 * 3600000;
 
       for (let step = 1; step <= 2; step++) {
         const factor = step / 3;
-        const curDate = new Date(cur.fullTime || Date.now() + i * 3 * 3600000);
-        const interpDate = new Date(curDate.getTime() + step * 3600000);
-        const h = interpDate.getHours();
+        const interpDt = curDt + step * 3600000;
+        const interpLocalDate = new Date(interpDt + cityOffsetSeconds * 1000);
+        const h = interpLocalDate.getUTCHours();
         const label = h === 0 ? '12 AM' : h < 12 ? `${h} AM` : h === 12 ? '12 PM' : `${h - 12} PM`;
+
+        const interpDatePart = `${interpLocalDate.getUTCFullYear()}-${String(interpLocalDate.getUTCMonth() + 1).padStart(2, '0')}-${String(interpLocalDate.getUTCDate()).padStart(2, '0')}`;
+        let interpDayLabel = 'Today';
+        if (interpDatePart < nowDatePart) interpDayLabel = 'Yesterday';
+        else if (interpDatePart > nowDatePart) interpDayLabel = 'Tomorrow';
 
         result.push({
           time: label,
+          hourOfDay: h,
           hourIndex: result.length,
-          isNow: false,
+          dayLabel: interpDayLabel,
           temp: Math.round(cur.temp + (next.temp - cur.temp) * factor),
           feels_like: Math.round(cur.feels_like + (next.feels_like - cur.feels_like) * factor),
           humidity: Math.round((cur.humidity || 60) + ((next.humidity || 60) - (cur.humidity || 60)) * factor),
@@ -340,6 +395,24 @@ export const interpolateHourlySlots = (threeHourSlots) => {
       }
     }
   }
+
+  // Find slot closest to city's current local hour and set isCurrent
+  let bestIdx = 0;
+  let minDiff = Infinity;
+  result.forEach((slot, idx) => {
+    const diff = Math.abs((slot.hourOfDay ?? 0) - currentCityHour);
+    if (diff < minDiff) {
+      minDiff = diff;
+      bestIdx = idx;
+    }
+  });
+
+  result.forEach((slot, idx) => {
+    slot.isCurrent = (idx === bestIdx);
+    slot.isNow = (idx === bestIdx);
+    slot.isPast = (idx < bestIdx);
+    slot.isFuture = (idx > bestIdx);
+  });
 
   return result.slice(0, 24);
 };
