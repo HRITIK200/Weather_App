@@ -1,28 +1,52 @@
 import React, { useState } from 'react';
-import { TrendingUp, Droplets, Info } from 'lucide-react';
+import { TrendingUp, Droplets, Wind, Sparkles, Activity, Info } from 'lucide-react';
 import { formatTemperature } from '../utils/weatherUtils';
 
-export const InteractiveChart = ({ hourly = [], unit }) => {
+export const InteractiveChart = ({
+  hourly = [],
+  hourly1h = [],
+  hourly3h = [],
+  unit,
+}) => {
   const [hoveredIndex, setHoveredIndex] = useState(null);
+  const [intervalMode, setIntervalMode] = useState('1h');
+  const [activeMetric, setActiveMetric] = useState('temp'); // 'temp' | 'pop' | 'wind'
 
-  if (!hourly || hourly.length < 2) return null;
+  // Select active dataset
+  const activeHourly =
+    intervalMode === '1h'
+      ? hourly1h && hourly1h.length > 0
+        ? hourly1h
+        : hourly
+      : hourly3h && hourly3h.length > 0
+      ? hourly3h
+      : hourly;
+
+  if (!activeHourly || activeHourly.length < 2) return null;
 
   // Chart Dimensions
-  const height = 180;
-  const width = 640;
+  const height = 190;
+  const width = 680;
   const paddingX = 40;
-  const paddingY = 35;
+  const paddingY = 40;
 
-  const temps = hourly.map((h) => h.temp);
-  const minTemp = Math.min(...temps);
-  const maxTemp = Math.max(...temps);
-  const tempSpan = Math.max(1, maxTemp - minTemp);
+  // Metric extraction
+  const metricValues = activeHourly.map((h) => {
+    if (activeMetric === 'pop') return h.pop || 0;
+    if (activeMetric === 'wind') return h.wind_speed || 0;
+    return h.temp;
+  });
+
+  const minVal = Math.min(...metricValues);
+  const maxVal = Math.max(...metricValues);
+  const valSpan = Math.max(1, maxVal - minVal);
 
   // Compute Coordinates for points
-  const points = hourly.map((item, index) => {
-    const x = paddingX + (index / (hourly.length - 1)) * (width - 2 * paddingX);
-    const y = height - paddingY - ((item.temp - minTemp) / tempSpan) * (height - 2 * paddingY);
-    return { x, y, item, index };
+  const points = activeHourly.map((item, index) => {
+    const val = metricValues[index];
+    const x = paddingX + (index / (activeHourly.length - 1)) * (width - 2 * paddingX);
+    const y = height - paddingY - ((val - minVal) / valSpan) * (height - 2 * paddingY);
+    return { x, y, item, index, val };
   });
 
   // Construct smooth Bezier SVG curve
@@ -50,48 +74,143 @@ export const InteractiveChart = ({ hourly = [], unit }) => {
 
   const activePoint = hoveredIndex !== null ? points[hoveredIndex] : points[0];
 
+  const formatMetricDisplay = (val) => {
+    if (activeMetric === 'pop') return `${val}% Rain`;
+    if (activeMetric === 'wind') return `${val} km/h`;
+    return formatTemperature(val, unit);
+  };
+
   return (
-    <div className="glass-card rounded-3xl p-6 sm:p-7 mb-6 overflow-hidden">
-      {/* Title & Active Metric Badge */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
-        <div className="flex items-center gap-2.5">
-          <div className="p-2.5 rounded-xl bg-gradient-to-tr from-cyan-500 to-blue-600 text-white shadow-md">
-            <TrendingUp className="w-4 h-4" />
+    <div className="glass-card rounded-3xl p-6 sm:p-7 mb-6 overflow-hidden relative">
+      {/* Background Accent Glow */}
+      <div className="absolute top-0 right-1/4 w-72 h-72 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
+
+      {/* Header: Title + Resolution Toggle + Metric Switcher */}
+      <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 mb-5">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-2xl bg-gradient-to-tr from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/20">
+            <TrendingUp className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-white tracking-wide">
-              24-Hour Temperature & Rain Trend
-            </h3>
-            <p className="text-xs text-slate-400">Interactive SVG atmospheric curve</p>
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-bold text-white tracking-wide">
+                24-Hour Atmospheric Curve
+              </h3>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                {intervalMode === '1h' ? '1-Hour (24 Pts)' : '3-Hour (8 Pts)'}
+              </span>
+            </div>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Interactive mathematical Bezier visualization with scrub telemetry
+            </p>
           </div>
         </div>
 
-        {/* Hover Highlight Box */}
-        {activePoint && (
-          <div className="px-3.5 py-1.5 rounded-xl bg-white/10 border border-white/10 text-xs font-semibold text-white flex items-center gap-2">
-            <span className="text-cyan-300">{activePoint.item.time}:</span>
-            <span className="text-sm font-extrabold">{formatTemperature(activePoint.item.temp, unit)}</span>
+        {/* Action Controls: Metric Tabs + Interval Toggle */}
+        <div className="flex flex-wrap items-center gap-2 self-stretch lg:self-auto justify-between lg:justify-end">
+          {/* Metric Selector */}
+          <div className="flex items-center p-1 rounded-2xl bg-black/30 border border-white/10 backdrop-blur-md">
+            <button
+              type="button"
+              onClick={() => setActiveMetric('temp')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                activeMetric === 'temp'
+                  ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-md shadow-cyan-500/25'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Temp
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveMetric('pop')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                activeMetric === 'pop'
+                  ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-md shadow-cyan-500/25'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Rain %
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveMetric('wind')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                activeMetric === 'wind'
+                  ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-md shadow-cyan-500/25'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Wind
+            </button>
+          </div>
+
+          {/* Interval Mode Toggle */}
+          <div className="flex items-center p-1 rounded-2xl bg-black/30 border border-white/10 backdrop-blur-md">
+            <button
+              type="button"
+              onClick={() => setIntervalMode('1h')}
+              className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                intervalMode === '1h'
+                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              1h
+            </button>
+            <button
+              type="button"
+              onClick={() => setIntervalMode('3h')}
+              className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                intervalMode === '3h'
+                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              3h
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Scrub Highlight Card Banner */}
+      {activePoint && (
+        <div className="mb-3 px-4 py-2 rounded-2xl bg-white/10 border border-white/15 backdrop-blur-md flex flex-wrap items-center justify-between gap-3 text-xs font-semibold">
+          <div className="flex items-center gap-2">
+            <span className="text-cyan-300 font-bold">{activePoint.item.time}:</span>
+            <span className="text-sm font-black text-white">
+              {formatMetricDisplay(activePoint.val)}
+            </span>
             <span className="text-slate-400 capitalize">({activePoint.item.description})</span>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <span className="text-slate-300">
+              Temp: <strong>{formatTemperature(activePoint.item.temp, unit)}</strong>
+            </span>
             {activePoint.item.pop > 0 && (
-              <span className="flex items-center gap-0.5 text-cyan-400 font-bold ml-1">
+              <span className="text-cyan-400 flex items-center gap-1 font-bold">
                 <Droplets className="w-3 h-3" />
                 {activePoint.item.pop}%
               </span>
             )}
+            <span className="text-slate-400">
+              Wind: {activePoint.item.wind_speed} km/h
+            </span>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* SVG Canvas Track */}
-      <div className="relative w-full overflow-x-auto">
+      <div className="relative w-full overflow-x-auto select-none">
         <svg
           viewBox={`0 0 ${width} ${height}`}
-          className="w-full h-48 overflow-visible select-none"
+          className="w-full h-52 overflow-visible select-none"
         >
           <defs>
             {/* Gradient Fill for Area */}
             <linearGradient id="curveGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.4" />
+              <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.45" />
               <stop offset="100%" stopColor="#06b6d4" stopOpacity="0.0" />
             </linearGradient>
 
@@ -115,63 +234,75 @@ export const InteractiveChart = ({ hourly = [], unit }) => {
             strokeLinecap="round"
           />
 
-          {/* Data Points & Tooltips */}
+          {/* Scrub Cursor Line on Hover */}
+          {activePoint && (
+            <line
+              x1={activePoint.x}
+              y1={paddingY - 10}
+              x2={activePoint.x}
+              y2={height - 20}
+              stroke="#22d3ee"
+              strokeWidth="1.5"
+              strokeDasharray="3 3"
+              opacity="0.8"
+            />
+          )}
+
+          {/* Data Points on Curve */}
           {points.map((pt) => {
             const isHovered = hoveredIndex === pt.index;
+            const isMin = pt.val === minVal;
+            const isMax = pt.val === maxVal;
+
             return (
               <g
                 key={pt.index}
-                className="cursor-pointer group"
+                className="cursor-pointer transition-all"
                 onMouseEnter={() => setHoveredIndex(pt.index)}
               >
-                {/* Vertical hover indicator bar */}
-                {isHovered && (
-                  <line
-                    x1={pt.x}
-                    y1={pt.y}
-                    x2={pt.x}
-                    y2={height - 20}
-                    stroke="rgba(255,255,255,0.3)"
-                    strokeDasharray="3 3"
-                    strokeWidth="1.5"
-                  />
-                )}
+                {/* Hit target */}
+                <circle cx={pt.x} cy={pt.y} r="18" fill="transparent" />
 
-                {/* Circle point */}
+                {/* Point ring */}
                 <circle
                   cx={pt.x}
                   cy={pt.y}
-                  r={isHovered ? 6 : 4}
-                  className={`transition-all duration-200 ${
-                    isHovered
-                      ? 'fill-white stroke-cyan-400 stroke-[3px] drop-shadow-md'
-                      : 'fill-cyan-400 stroke-slate-900 stroke-2'
-                  }`}
+                  r={isHovered ? 6.5 : isMin || isMax ? 4.5 : 2.5}
+                  fill={isHovered ? '#22d3ee' : isMax ? '#fbbf24' : isMin ? '#60a5fa' : '#ffffff'}
+                  stroke="#0f172a"
+                  strokeWidth={isHovered ? 2.5 : 1.5}
+                  className="transition-all"
                 />
 
-                {/* Temperature label above point */}
-                <text
-                  x={pt.x}
-                  y={pt.y - 10}
-                  textAnchor="middle"
-                  className={`text-[11px] font-bold fill-white transition-opacity ${
-                    isHovered ? 'opacity-100 font-extrabold' : 'opacity-85'
-                  }`}
-                >
-                  {formatTemperature(pt.item.temp, unit)}
-                </text>
+                {/* Min / Max Peak Badges */}
+                {(isMax || isMin || isHovered) && (
+                  <text
+                    x={pt.x}
+                    y={pt.y - 12}
+                    textAnchor="middle"
+                    fill={isMax ? '#fcd34d' : isMin ? '#93c5fd' : '#ffffff'}
+                    fontSize={isHovered ? 12 : 10}
+                    fontWeight="bold"
+                    className="drop-shadow-sm pointer-events-none"
+                  >
+                    {formatMetricDisplay(pt.val)}
+                  </text>
+                )}
 
-                {/* Time label below chart */}
-                <text
-                  x={pt.x}
-                  y={height - 5}
-                  textAnchor="middle"
-                  className={`text-[10px] font-medium fill-slate-400 transition-colors ${
-                    isHovered ? 'fill-cyan-300 font-bold' : ''
-                  }`}
-                >
-                  {pt.item.time}
-                </text>
+                {/* X-Axis Hour Labels (smartly spaced) */}
+                {(points.length <= 12 || pt.index % 2 === 0 || isHovered) && (
+                  <text
+                    x={pt.x}
+                    y={height - 6}
+                    textAnchor="middle"
+                    fill={isHovered ? '#22d3ee' : '#94a3b8'}
+                    fontSize="10"
+                    fontWeight={isHovered ? 'bold' : 'normal'}
+                    className="pointer-events-none"
+                  >
+                    {pt.item.time}
+                  </text>
+                )}
               </g>
             );
           })}
@@ -181,10 +312,10 @@ export const InteractiveChart = ({ hourly = [], unit }) => {
       <div className="flex items-center justify-between text-[11px] text-slate-400 mt-2 px-2 border-t border-white/5 pt-2">
         <span className="flex items-center gap-1">
           <Info className="w-3.5 h-3.5 text-cyan-400" />
-          Hover over data points to inspect temperature curve and rain chances.
+          Hover over data points to inspect curve, temperature, and atmospheric readings.
         </span>
         <span className="text-slate-300">
-          Peak: <strong className="text-white">{formatTemperature(maxTemp, unit)}</strong> | Low: <strong className="text-white">{formatTemperature(minTemp, unit)}</strong>
+          Peak: <strong className="text-white">{formatMetricDisplay(maxVal)}</strong> | Low: <strong className="text-white">{formatMetricDisplay(minVal)}</strong>
         </span>
       </div>
     </div>

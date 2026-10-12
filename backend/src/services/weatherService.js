@@ -192,3 +192,134 @@ export const searchLocations = async (query) => {
 
   return results.slice(0, 8);
 };
+
+/**
+ * Helper to map WMO Weather interpretation codes to OpenWeather icons & descriptions
+ */
+const mapWmoCode = (code, isDay = true) => {
+  if (code === 0) return { main: 'Clear', description: 'Clear sky', icon: isDay ? '01d' : '01n' };
+  if (code === 1) return { main: 'Clear', description: 'Mainly clear', icon: isDay ? '01d' : '01n' };
+  if (code === 2) return { main: 'Clouds', description: 'Partly cloudy', icon: isDay ? '02d' : '02n' };
+  if (code === 3) return { main: 'Clouds', description: 'Overcast', icon: isDay ? '04d' : '04n' };
+  if ([45, 48].includes(code)) return { main: 'Fog', description: 'Foggy', icon: '50d' };
+  if ([51, 53, 55].includes(code)) return { main: 'Drizzle', description: 'Light drizzle', icon: '09d' };
+  if ([61, 63, 65].includes(code)) return { main: 'Rain', description: 'Rain showers', icon: '10d' };
+  if ([66, 67].includes(code)) return { main: 'Rain', description: 'Freezing rain', icon: '10d' };
+  if ([71, 73, 75, 77].includes(code)) return { main: 'Snow', description: 'Snowfall', icon: '13d' };
+  if ([80, 81, 82].includes(code)) return { main: 'Rain', description: 'Heavy showers', icon: '09d' };
+  if ([85, 86].includes(code)) return { main: 'Snow', description: 'Snow showers', icon: '13d' };
+  if ([95, 96, 99].includes(code)) return { main: 'Thunderstorm', description: 'Thunderstorm', icon: '11d' };
+  return { main: 'Clouds', description: 'Scattered clouds', icon: '03d' };
+};
+
+/**
+ * Fetch True 1-Hour Resolution Hourly Forecast (Every Single Hour for next 24-48 hours)
+ */
+export const fetchHourlyOneHourForecast = async (lat, lon) => {
+  try {
+    const res = await axios.get('https://api.open-meteo.com/v1/forecast', {
+      params: {
+        latitude: lat,
+        longitude: lon,
+        hourly: 'temperature_2m,relative_humidity_2m,apparent_temperature,precipitation_probability,weather_code,wind_speed_10m',
+        timezone: 'auto',
+        forecast_days: 2,
+      },
+      timeout: 5000,
+    });
+
+    const data = res.data?.hourly;
+    if (!data || !data.time || data.time.length === 0) return null;
+
+    const nowMs = Date.now();
+    let startIndex = 0;
+    let minDiff = Infinity;
+
+    for (let i = 0; i < data.time.length; i++) {
+      const itemTime = new Date(data.time[i]).getTime();
+      const diff = Math.abs(itemTime - nowMs);
+      if (diff < minDiff) {
+        minDiff = diff;
+        startIndex = i;
+      }
+    }
+
+    const hourly1h = [];
+    for (let i = startIndex; i < data.time.length && hourly1h.length < 24; i++) {
+      const dt = new Date(data.time[i]);
+      const hours = dt.getHours();
+      const label = hours === 0 ? '12 AM' : hours < 12 ? `${hours} AM` : hours === 12 ? '12 PM' : `${hours - 12} PM`;
+      const isDay = hours >= 6 && hours <= 18;
+      const weatherInfo = mapWmoCode(data.weather_code[i], isDay);
+
+      hourly1h.push({
+        time: label,
+        fullTime: data.time[i],
+        hourIndex: hourly1h.length,
+        isNow: hourly1h.length === 0,
+        temp: Math.round(data.temperature_2m[i]),
+        feels_like: Math.round(data.apparent_temperature[i]),
+        humidity: Math.round(data.relative_humidity_2m[i] || 0),
+        pop: Math.round(data.precipitation_probability[i] || 0),
+        wind_speed: Math.round(data.wind_speed_10m[i]),
+        description: weatherInfo.description,
+        main: weatherInfo.main,
+        icon: weatherInfo.icon,
+      });
+    }
+
+    return hourly1h;
+  } catch (err) {
+    console.warn('⚠️ [hourly-1h]: Open-Meteo fallback:', err.message);
+    return null;
+  }
+};
+
+/**
+ * Fallback: Smooth 1-hour interpolation from 3-hour slots
+ */
+export const interpolateHourlySlots = (threeHourSlots) => {
+  if (!threeHourSlots || threeHourSlots.length === 0) return [];
+  const result = [];
+
+  for (let i = 0; i < threeHourSlots.length; i++) {
+    const cur = threeHourSlots[i];
+    result.push({
+      ...cur,
+      hourIndex: result.length,
+      isNow: result.length === 0,
+    });
+
+    // Interpolate 2 in-between hours if there is a next slot
+    if (i < threeHourSlots.length - 1 && result.length < 24) {
+      const next = threeHourSlots[i + 1];
+
+      for (let step = 1; step <= 2; step++) {
+        const factor = step / 3;
+        const curDate = new Date(cur.fullTime || Date.now() + i * 3 * 3600000);
+        const interpDate = new Date(curDate.getTime() + step * 3600000);
+        const h = interpDate.getHours();
+        const label = h === 0 ? '12 AM' : h < 12 ? `${h} AM` : h === 12 ? '12 PM' : `${h - 12} PM`;
+
+        result.push({
+          time: label,
+          hourIndex: result.length,
+          isNow: false,
+          temp: Math.round(cur.temp + (next.temp - cur.temp) * factor),
+          feels_like: Math.round(cur.feels_like + (next.feels_like - cur.feels_like) * factor),
+          humidity: Math.round((cur.humidity || 60) + ((next.humidity || 60) - (cur.humidity || 60)) * factor),
+          pop: Math.round(cur.pop + (next.pop - cur.pop) * factor),
+          wind_speed: Math.round(cur.wind_speed + (next.wind_speed - cur.wind_speed) * factor),
+          description: factor > 0.5 ? next.description : cur.description,
+          main: factor > 0.5 ? next.main : cur.main,
+          icon: factor > 0.5 ? next.icon : cur.icon,
+        });
+
+        if (result.length >= 24) break;
+      }
+    }
+  }
+
+  return result.slice(0, 24);
+};
+

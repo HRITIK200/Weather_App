@@ -349,7 +349,12 @@ export default function App() {
 
               {/* 24-Hour Interactive Bezier Curve Chart */}
               {forecast?.hourly && (
-                <InteractiveChart hourly={forecast.hourly} unit={unit} />
+                <InteractiveChart
+                  hourly={forecast.hourly}
+                  hourly1h={forecast.hourly_1h}
+                  hourly3h={forecast.hourly_3h}
+                  unit={unit}
+                />
               )}
 
               {/* Air Quality Index (AQI) with Persona Guidance & Pollutants */}
@@ -365,9 +370,14 @@ export default function App() {
                 <ActivityPlannerCard activities={weather.ai_insight.activities} />
               )}
 
-              {/* 24-Hour Forecast Carousel */}
+              {/* 24-Hour / 1-Hour Forecast Carousel */}
               {forecast?.hourly && (
-                <HourlyForecast hourly={forecast.hourly} unit={unit} />
+                <HourlyForecast
+                  hourly={forecast.hourly}
+                  hourly1h={forecast.hourly_1h}
+                  hourly3h={forecast.hourly_3h}
+                  unit={unit}
+                />
               )}
 
               {/* 5-Day Forecast with Apple-style Range Progress Bars */}

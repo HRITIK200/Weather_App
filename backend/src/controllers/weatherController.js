@@ -252,22 +252,49 @@ export const getWeatherForecast = async (req, res, next) => {
       });
     }
 
-    // 1. Hourly Forecast (first 8 slots = next 24 hours in 3-hour intervals)
-    const hourly = forecastRaw.list.slice(0, 8).map((item) => {
+    // Determine coordinates for high-precision 1-hour forecast
+    const targetLat = lat ? parseFloat(lat) : forecastRaw.city?.coord?.lat;
+    const targetLon = lon ? parseFloat(lon) : forecastRaw.city?.coord?.lon;
+
+    // 1. 3-Hour Interval Slots from OpenWeather (Classical synoptic 8 slots)
+    const hourly_3h = forecastRaw.list.slice(0, 8).map((item, idx) => {
       const dt = new Date(item.dt * 1000);
       const hours = dt.getHours();
       const label = hours === 0 ? '12 AM' : hours < 12 ? `${hours} AM` : hours === 12 ? '12 PM' : `${hours - 12} PM`;
 
       return {
         time: label,
+        fullTime: item.dt_txt,
+        hourIndex: idx,
+        isNow: idx === 0,
         temp: Math.round(item.main.temp),
         feels_like: Math.round(item.main.feels_like),
+        humidity: item.main.humidity,
         pop: Math.round((item.pop || 0) * 100), // Probability of precipitation %
         description: item.weather[0].description,
+        main: item.weather[0].main,
         icon: item.weather[0].icon,
         wind_speed: Math.round(item.wind.speed * 3.6),
       };
     });
+
+    // 2. True 1-Hour Resolution Forecast (Every single hour for 24 hours)
+    let hourly_1h = null;
+    if (targetLat && targetLon) {
+      try {
+        hourly_1h = await weatherService.fetchHourlyOneHourForecast(targetLat, targetLon);
+      } catch (e) {
+        console.warn('⚠️ [forecast]: 1h fetch error, using interpolation');
+      }
+    }
+
+    // Fallback: smooth cubic/linear interpolation if needed
+    if (!hourly_1h || hourly_1h.length === 0) {
+      hourly_1h = weatherService.interpolateHourlySlots(hourly_3h);
+    }
+
+    // Default 'hourly' is the 1-hour sequence (every hour)
+    const hourly = hourly_1h;
 
     // 2. Daily Forecast (grouping by date for next 5 days)
     const dailyMap = {};
@@ -307,6 +334,8 @@ export const getWeatherForecast = async (req, res, next) => {
       success: true,
       data: {
         hourly,
+        hourly_1h,
+        hourly_3h,
         daily,
       },
     });
