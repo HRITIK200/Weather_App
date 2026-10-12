@@ -5,18 +5,34 @@ const api = axios.create({
   timeout: 10000,
 });
 
+export const searchLocations = async (query) => {
+  if (!query || query.trim().length < 2) return [];
+  const res = await api.get('/weather/search-locations', { params: { q: query.trim() } });
+  return res.data.data;
+};
+
 export const fetchWeatherByCity = async (city) => {
   const res = await api.get('/weather', { params: { city } });
   return res.data.data;
 };
 
-export const fetchWeatherByCoords = async (lat, lon) => {
-  const res = await api.get('/weather/coordinates', { params: { lat, lon } });
+export const fetchWeatherByCoords = async (lat, lon, extra = {}) => {
+  const res = await api.get('/weather/coordinates', {
+    params: {
+      lat,
+      lon,
+      customName: extra.customName,
+      subtitle: extra.subtitle,
+      areaType: extra.areaType,
+      postcode: extra.postcode,
+    },
+  });
   return res.data.data;
 };
 
-export const fetchForecast = async (city) => {
-  const res = await api.get('/weather/forecast', { params: { city } });
+export const fetchForecast = async (cityOrParams) => {
+  const params = typeof cityOrParams === 'object' ? cityOrParams : { city: cityOrParams };
+  const res = await api.get('/weather/forecast', { params });
   return res.data.data;
 };
 

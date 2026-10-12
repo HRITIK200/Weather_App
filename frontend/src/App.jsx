@@ -140,16 +140,49 @@ export default function App() {
     }
   };
 
+  // Load weather by specific location / small area object
+  const loadWeatherByLocation = async (location) => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const [currentData, forecastData] = await Promise.all([
+        fetchWeatherByCoords(location.lat, location.lon, {
+          customName: location.name,
+          subtitle: location.subtitle,
+          areaType: location.type,
+          postcode: location.postcode,
+        }),
+        fetchForecast({ lat: location.lat, lon: location.lon }),
+      ]);
+
+      setWeather(currentData);
+      setForecast(forecastData);
+
+      try {
+        const updatedHistory = await fetchHistory();
+        setHistory(updatedHistory || []);
+      } catch (e) {}
+    } catch (err) {
+      const msg = err.response?.data?.message || 'Failed to load weather for this location.';
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Load weather by Coords
   const loadWeatherByCoords = async (lat, lon) => {
     try {
       setLoading(true);
       setError(null);
 
-      const currentData = await fetchWeatherByCoords(lat, lon);
-      setWeather(currentData);
+      const [currentData, forecastData] = await Promise.all([
+        fetchWeatherByCoords(lat, lon),
+        fetchForecast({ lat, lon }),
+      ]);
 
-      const forecastData = await fetchForecast(currentData.name);
+      setWeather(currentData);
       setForecast(forecastData);
 
       try {
@@ -273,9 +306,10 @@ export default function App() {
         {/* Severe Weather & Air Quality Alert Banner */}
         {weather?.alerts && <WeatherAlertBanner alerts={weather.alerts} />}
 
-        {/* Search Bar with Autocomplete, Geolocation & Voice Search */}
+        {/* Search Bar with Autocomplete, Small Area Geocoding & Corner Explorer */}
         <SearchBar
           onSearch={loadWeatherByCity}
+          onSelectLocation={loadWeatherByLocation}
           onLocateMe={handleLocateMe}
           isLocating={isLocating}
           recentCities={history.map((h) => h.city_name)}
@@ -344,8 +378,19 @@ export default function App() {
               {/* Detailed Meteorological Metrics Grid (6 cards) */}
               <WeatherMetricsGrid weather={weather} />
 
-              {/* Geographical Radar & Location Map */}
-              <WeatherMapCard weather={weather} unit={unit} />
+              {/* Geographical Radar & Location Map with Explorer */}
+              <WeatherMapCard
+                weather={weather}
+                unit={unit}
+                onSelectCoords={(lat, lon, label) =>
+                  loadWeatherByLocation({
+                    lat,
+                    lon,
+                    name: label || `Radar Point (${lat.toFixed(2)}, ${lon.toFixed(2)})`,
+                    type: 'coordinate_radar',
+                  })
+                }
+              />
             </main>
           )
         )}

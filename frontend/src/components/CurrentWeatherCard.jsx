@@ -32,17 +32,39 @@ export const CurrentWeatherCard = ({ weather, unit }) => {
         {/* Left Column: Location & Temperature */}
         <div className="text-center md:text-left">
           {/* Location Badge */}
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/10 border border-white/10 mb-3">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/10 border border-white/10 mb-2">
             <MapPin className="w-4 h-4 text-cyan-400" />
             <span className="text-sm font-bold text-white tracking-wide">
-              {name}
+              {weather.displayName || name}
             </span>
+            {weather.areaType && (
+              <span className="text-[10px] uppercase font-bold text-cyan-300 px-1.5 py-0.5 rounded bg-cyan-950/80 border border-cyan-500/30">
+                {weather.areaType}
+              </span>
+            )}
             {country && (
               <span className="text-xs uppercase font-semibold text-cyan-300 px-1.5 py-0.5 rounded bg-cyan-950/60 border border-cyan-500/30">
                 {country}
               </span>
             )}
           </div>
+
+          {/* Locality Subtitle & Postal Details */}
+          {(weather.subtitle || weather.postcode) && (
+            <div className="text-xs text-slate-300 font-medium mb-3 flex items-center justify-center md:justify-start gap-2 flex-wrap">
+              <span>{weather.subtitle}</span>
+              {weather.postcode && (
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/20">
+                  PIN: {weather.postcode}
+                </span>
+              )}
+              {weather.stationName && weather.stationName !== (weather.displayName || name) && (
+                <span className="text-[10px] text-slate-400">
+                  • Station: {weather.stationName}
+                </span>
+              )}
+            </div>
+          )}
 
           {/* Local City Time */}
           {local_time && (

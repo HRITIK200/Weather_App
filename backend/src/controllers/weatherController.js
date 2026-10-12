@@ -71,6 +71,26 @@ const formatWeatherResponse = async (weatherData) => {
 };
 
 /**
+ * GET /api/weather/search-locations?q=...
+ * Search villages, taluks, tehsils, sectors, PIN codes, and global corners
+ */
+export const searchLocationsHandler = async (req, res, next) => {
+  try {
+    const { q } = req.query;
+    if (!q || q.trim().length < 2) {
+      return res.status(200).json({ success: true, data: [] });
+    }
+    const locations = await weatherService.searchLocations(q.trim());
+    return res.status(200).json({
+      success: true,
+      data: locations,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+/**
  * GET /api/weather?city=...
  */
 export const getCurrentWeather = async (req, res, next) => {
@@ -80,17 +100,54 @@ export const getCurrentWeather = async (req, res, next) => {
     if (!city || city.trim() === '') {
       return res.status(400).json({
         success: false,
-        message: 'City parameter is required',
+        message: 'City or location parameter is required',
       });
     }
 
-    const weatherData = await weatherService.fetchCurrentWeather(city.trim());
+    const cleanQuery = city.trim();
+    let weatherData = null;
+    let customLocation = null;
+
+    // 1. Try direct city search
+    try {
+      weatherData = await weatherService.fetchCurrentWeather(cleanQuery);
+    } catch (directErr) {
+      // 2. If 404 (small area, village, sector, colony, PIN code), resolve via Geocoding
+      if (directErr.response && directErr.response.status === 404) {
+        const locations = await weatherService.searchLocations(cleanQuery);
+        if (locations && locations.length > 0) {
+          customLocation = locations[0];
+          weatherData = await weatherService.fetchCurrentWeatherByCoords(
+            customLocation.lat,
+            customLocation.lon
+          );
+        } else {
+          return res.status(404).json({
+            success: false,
+            message: `Location "${cleanQuery}" not found. Try searching by PIN code or nearby town.`,
+          });
+        }
+      } else {
+        throw directErr;
+      }
+    }
+
     const formatted = await formatWeatherResponse(weatherData);
+
+    // If custom small area / locality was resolved, enrich metadata
+    if (customLocation) {
+      formatted.displayName = customLocation.name;
+      formatted.fullLocation = customLocation.displayName;
+      formatted.subtitle = customLocation.subtitle;
+      formatted.stationName = formatted.name;
+      formatted.areaType = customLocation.type;
+      if (customLocation.postcode) formatted.postcode = customLocation.postcode;
+    }
 
     // Record into Search History
     try {
       await historyModel.createHistoryEntry(
-        formatted.name,
+        formatted.displayName || formatted.name,
         formatted.country,
         formatted.temp,
         formatted.description,
@@ -108,7 +165,7 @@ export const getCurrentWeather = async (req, res, next) => {
     if (error.response && error.response.status === 404) {
       return res.status(404).json({
         success: false,
-        message: 'City not found. Please check spelling.',
+        message: 'Location not found. Please check spelling or enter a PIN code.',
       });
     }
     return next(error);
@@ -120,7 +177,7 @@ export const getCurrentWeather = async (req, res, next) => {
  */
 export const getWeatherByCoords = async (req, res, next) => {
   try {
-    const { lat, lon } = req.query;
+    const { lat, lon, customName, subtitle, areaType, postcode } = req.query;
 
     if (!lat || !lon) {
       return res.status(400).json({
@@ -132,10 +189,18 @@ export const getWeatherByCoords = async (req, res, next) => {
     const weatherData = await weatherService.fetchCurrentWeatherByCoords(lat, lon);
     const formatted = await formatWeatherResponse(weatherData);
 
+    if (customName) {
+      formatted.displayName = customName;
+      formatted.stationName = formatted.name;
+      formatted.subtitle = subtitle || '';
+      formatted.areaType = areaType || 'locality';
+      if (postcode) formatted.postcode = postcode;
+    }
+
     // Record search history
     try {
       await historyModel.createHistoryEntry(
-        formatted.name,
+        formatted.displayName || formatted.name,
         formatted.country,
         formatted.temp,
         formatted.description,
@@ -163,7 +228,21 @@ export const getWeatherForecast = async (req, res, next) => {
 
     let forecastRaw = null;
     if (city && city.trim() !== '') {
-      forecastRaw = await weatherService.fetchForecast(city.trim());
+      try {
+        forecastRaw = await weatherService.fetchForecast(city.trim());
+      } catch (forecastErr) {
+        // Fallback geocode if city forecast fails with 404
+        if (forecastErr.response && forecastErr.response.status === 404) {
+          const locs = await weatherService.searchLocations(city.trim());
+          if (locs && locs.length > 0) {
+            forecastRaw = await weatherService.fetchForecastByCoords(locs[0].lat, locs[0].lon);
+          } else {
+            throw forecastErr;
+          }
+        } else {
+          throw forecastErr;
+        }
+      }
     } else if (lat && lon) {
       forecastRaw = await weatherService.fetchForecastByCoords(lat, lon);
     } else {
