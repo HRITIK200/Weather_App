@@ -213,7 +213,7 @@ const mapWmoCode = (code, isDay = true) => {
 };
 
 /**
- * Fetch True 1-Hour Resolution Hourly Forecast (Every Single Hour for next 24-48 hours)
+ * Fetch True 1-Hour Resolution Hourly Forecast (with Past Hours from earlier today & Future 24-36 Hours)
  */
 export const fetchHourlyOneHourForecast = async (lat, lon) => {
   try {
@@ -223,6 +223,7 @@ export const fetchHourlyOneHourForecast = async (lat, lon) => {
         longitude: lon,
         hourly: 'temperature_2m,relative_humidity_2m,apparent_temperature,precipitation_probability,weather_code,wind_speed_10m',
         timezone: 'auto',
+        past_days: 1,
         forecast_days: 2,
       },
       timeout: 5000,
@@ -231,32 +232,52 @@ export const fetchHourlyOneHourForecast = async (lat, lon) => {
     const data = res.data?.hourly;
     if (!data || !data.time || data.time.length === 0) return null;
 
-    const nowMs = Date.now();
-    let startIndex = 0;
-    let minDiff = Infinity;
+    const offsetSeconds = res.data.utc_offset_seconds || 0;
+    const localNow = new Date(Date.now() + offsetSeconds * 1000);
+    const targetHourStr = localNow.toISOString().slice(0, 13) + ':00';
 
-    for (let i = 0; i < data.time.length; i++) {
-      const itemTime = new Date(data.time[i]).getTime();
-      const diff = Math.abs(itemTime - nowMs);
-      if (diff < minDiff) {
-        minDiff = diff;
-        startIndex = i;
-      }
+    let currentIdx = data.time.indexOf(targetHourStr);
+    if (currentIdx === -1) {
+      currentIdx = Math.max(0, Math.min(data.time.length - 1, 36));
     }
 
+    // Determine current hour of day in local time (0 - 23)
+    const currentLocalHour = parseInt(targetHourStr.slice(11, 13), 10) || 12;
+
+    // Start from today's midnight (12 AM) so earlier hours of today are available
+    const startIdx = Math.max(0, currentIdx - currentLocalHour);
+    // Include up to 28 hours into the future
+    const endIdx = Math.min(data.time.length, currentIdx + 28);
+
     const hourly1h = [];
-    for (let i = startIndex; i < data.time.length && hourly1h.length < 24; i++) {
-      const dt = new Date(data.time[i]);
-      const hours = dt.getHours();
+    for (let i = startIdx; i < endIdx; i++) {
+      const hours = parseInt(data.time[i].slice(11, 13), 10);
       const label = hours === 0 ? '12 AM' : hours < 12 ? `${hours} AM` : hours === 12 ? '12 PM' : `${hours - 12} PM`;
       const isDay = hours >= 6 && hours <= 18;
       const weatherInfo = mapWmoCode(data.weather_code[i], isDay);
+
+      const isCurrent = i === currentIdx;
+      const isPast = i < currentIdx;
+      const isFuture = i > currentIdx;
+      const diffFromNow = i - currentIdx;
+
+      const datePart = data.time[i].slice(0, 10);
+      const nowDatePart = targetHourStr.slice(0, 10);
+      let dayLabel = 'Today';
+      if (datePart < nowDatePart) dayLabel = 'Yesterday';
+      else if (datePart > nowDatePart) dayLabel = 'Tomorrow';
 
       hourly1h.push({
         time: label,
         fullTime: data.time[i],
         hourIndex: hourly1h.length,
-        isNow: hourly1h.length === 0,
+        hourOfDay: hours,
+        isNow: isCurrent,
+        isCurrent,
+        isPast,
+        isFuture,
+        diffFromNow,
+        dayLabel,
         temp: Math.round(data.temperature_2m[i]),
         feels_like: Math.round(data.apparent_temperature[i]),
         humidity: Math.round(data.relative_humidity_2m[i] || 0),

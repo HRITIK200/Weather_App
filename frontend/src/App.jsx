@@ -280,7 +280,7 @@ export default function App() {
 
   return (
     <div
-      className={`min-h-screen bg-gradient-to-br ${backgroundGradient} transition-colors duration-1000 py-6 px-4 sm:px-6 lg:px-8 text-slate-100 font-sans relative overflow-x-hidden`}
+      className={`min-h-screen bg-gradient-to-br ${backgroundGradient} transition-colors duration-1000 py-3 sm:py-6 px-3 sm:px-6 lg:px-8 text-slate-100 font-sans relative overflow-x-hidden selection:bg-amber-500 selection:text-black`}
     >
       {/* Ambient Particle Canvas FX (Rain / Snow / Dust) */}
       <WeatherParticleCanvas

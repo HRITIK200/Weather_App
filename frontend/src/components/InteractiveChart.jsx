@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { TrendingUp, Droplets, Wind, Sparkles, Activity, Info } from 'lucide-react';
+import { TrendingUp, Droplets, Wind, Sparkles, Activity, Info, Sun } from 'lucide-react';
 import { formatTemperature } from '../utils/weatherUtils';
 
 export const InteractiveChart = ({
@@ -72,7 +72,9 @@ export const InteractiveChart = ({
   const linePath = createSmoothPath(points);
   const areaPath = `${linePath} L ${points[points.length - 1].x} ${height - 10} L ${points[0].x} ${height - 10} Z`;
 
-  const activePoint = hoveredIndex !== null ? points[hoveredIndex] : points[0];
+  // Find index of current hour or default to hovered/first
+  const currentPt = points.find((p) => p.item.isCurrent || p.item.isNow);
+  const activePoint = hoveredIndex !== null ? points[hoveredIndex] : currentPt || points[0];
 
   const formatMetricDisplay = (val) => {
     if (activeMetric === 'pop') return `${val}% Rain`;
@@ -80,28 +82,89 @@ export const InteractiveChart = ({
     return formatTemperature(val, unit);
   };
 
+  // Theme palettes based on active metric (Multi-Tone)
+  const getMetricGradients = () => {
+    if (activeMetric === 'pop') {
+      return {
+        lineGrad: (
+          <linearGradient id="curveLineGrad" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#06b6d4" />
+            <stop offset="50%" stopColor="#3b82f6" />
+            <stop offset="100%" stopColor="#8b5cf6" />
+          </linearGradient>
+        ),
+        areaGrad: (
+          <linearGradient id="curveAreaGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.4" />
+            <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.0" />
+          </linearGradient>
+        ),
+        activeColor: '#06b6d4',
+      };
+    }
+    if (activeMetric === 'wind') {
+      return {
+        lineGrad: (
+          <linearGradient id="curveLineGrad" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#10b981" />
+            <stop offset="50%" stopColor="#14b8a6" />
+            <stop offset="100%" stopColor="#06b6d4" />
+          </linearGradient>
+        ),
+        areaGrad: (
+          <linearGradient id="curveAreaGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#10b981" stopOpacity="0.4" />
+            <stop offset="100%" stopColor="#14b8a6" stopOpacity="0.0" />
+          </linearGradient>
+        ),
+        activeColor: '#10b981',
+      };
+    }
+    // Default Temperature: Warm Solar Amber to Sunset Rose & Ice Violet
+    return {
+      lineGrad: (
+        <linearGradient id="curveLineGrad" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor="#fbbf24" />
+          <stop offset="50%" stopColor="#f97316" />
+          <stop offset="100%" stopColor="#ec4899" />
+        </linearGradient>
+      ),
+      areaGrad: (
+        <linearGradient id="curveAreaGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.4" />
+          <stop offset="50%" stopColor="#f97316" stopOpacity="0.15" />
+          <stop offset="100%" stopColor="#ec4899" stopOpacity="0.0" />
+        </linearGradient>
+      ),
+      activeColor: '#fbbf24',
+    };
+  };
+
+  const metricGrad = getMetricGradients();
+
   return (
-    <div className="glass-card rounded-3xl p-6 sm:p-7 mb-6 overflow-hidden relative">
-      {/* Background Accent Glow */}
-      <div className="absolute top-0 right-1/4 w-72 h-72 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
+    <div className="glass-card rounded-3xl p-5 sm:p-7 mb-6 overflow-hidden relative border border-white/10 shadow-2xl">
+      {/* Background Multi-Tone Glow */}
+      <div className="absolute top-0 right-1/4 w-72 h-72 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute bottom-0 left-10 w-72 h-72 bg-rose-600/10 rounded-full blur-3xl pointer-events-none" />
 
       {/* Header: Title + Resolution Toggle + Metric Switcher */}
       <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 mb-5">
         <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-2xl bg-gradient-to-tr from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/20">
+          <div className="p-3 rounded-2xl bg-gradient-to-tr from-amber-500 to-rose-600 text-white shadow-lg shadow-amber-500/20">
             <TrendingUp className="w-5 h-5" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h3 className="text-base font-bold text-white tracking-wide">
-                24-Hour Atmospheric Curve
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-base sm:text-lg font-bold text-white tracking-wide">
+                24-Hour Diurnal Trend
               </h3>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold tracking-wider uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30">
                 {intervalMode === '1h' ? '1-Hour (24 Pts)' : '3-Hour (8 Pts)'}
               </span>
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
-              Interactive mathematical Bezier visualization with scrub telemetry
+              Continuous mathematical Bezier dynamics with past and future readings
             </p>
           </div>
         </div>
@@ -109,50 +172,50 @@ export const InteractiveChart = ({
         {/* Action Controls: Metric Tabs + Interval Toggle */}
         <div className="flex flex-wrap items-center gap-2 self-stretch lg:self-auto justify-between lg:justify-end">
           {/* Metric Selector */}
-          <div className="flex items-center p-1 rounded-2xl bg-black/30 border border-white/10 backdrop-blur-md">
+          <div className="flex items-center p-1 rounded-2xl bg-black/40 border border-white/10 backdrop-blur-md">
             <button
               type="button"
               onClick={() => setActiveMetric('temp')}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
                 activeMetric === 'temp'
-                  ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-md shadow-cyan-500/25'
+                  ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-md'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              Temp
+              Temperature
             </button>
             <button
               type="button"
               onClick={() => setActiveMetric('pop')}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
                 activeMetric === 'pop'
-                  ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-md shadow-cyan-500/25'
+                  ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-md'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              Rain %
+              Precipitation %
             </button>
             <button
               type="button"
               onClick={() => setActiveMetric('wind')}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
                 activeMetric === 'wind'
-                  ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-md shadow-cyan-500/25'
+                  ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-md'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              Wind
+              Wind Speed
             </button>
           </div>
 
           {/* Interval Mode Toggle */}
-          <div className="flex items-center p-1 rounded-2xl bg-black/30 border border-white/10 backdrop-blur-md">
+          <div className="flex items-center p-1 rounded-2xl bg-black/40 border border-white/10 backdrop-blur-md">
             <button
               type="button"
               onClick={() => setIntervalMode('1h')}
               className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
                 intervalMode === '1h'
-                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                  ? 'bg-white/20 text-white shadow-sm'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
@@ -163,7 +226,7 @@ export const InteractiveChart = ({
               onClick={() => setIntervalMode('3h')}
               className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
                 intervalMode === '3h'
-                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                  ? 'bg-white/20 text-white shadow-sm'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
@@ -173,20 +236,27 @@ export const InteractiveChart = ({
         </div>
       </div>
 
-      {/* Scrub Highlight Card Banner */}
+      {/* Scrub Highlight Banner */}
       {activePoint && (
-        <div className="mb-3 px-4 py-2 rounded-2xl bg-white/10 border border-white/15 backdrop-blur-md flex flex-wrap items-center justify-between gap-3 text-xs font-semibold">
+        <div className="mb-4 px-4 py-2.5 rounded-2xl bg-white/10 border border-white/15 backdrop-blur-md flex flex-wrap items-center justify-between gap-3 text-xs font-semibold">
           <div className="flex items-center gap-2">
-            <span className="text-cyan-300 font-bold">{activePoint.item.time}:</span>
+            <span className="text-amber-300 font-extrabold flex items-center gap-1">
+              {activePoint.item.isCurrent && (
+                <span className="px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-black uppercase border border-emerald-500/30">
+                  Now
+                </span>
+              )}
+              {activePoint.item.time}:
+            </span>
             <span className="text-sm font-black text-white">
               {formatMetricDisplay(activePoint.val)}
             </span>
-            <span className="text-slate-400 capitalize">({activePoint.item.description})</span>
+            <span className="text-slate-300 capitalize">({activePoint.item.description})</span>
           </div>
 
           <div className="flex items-center gap-3">
             <span className="text-slate-300">
-              Temp: <strong>{formatTemperature(activePoint.item.temp, unit)}</strong>
+              Temp: <strong className="text-amber-300">{formatTemperature(activePoint.item.temp, unit)}</strong>
             </span>
             {activePoint.item.pop > 0 && (
               <span className="text-cyan-400 flex items-center gap-1 font-bold">
@@ -202,34 +272,24 @@ export const InteractiveChart = ({
       )}
 
       {/* SVG Canvas Track */}
-      <div className="relative w-full overflow-x-auto select-none">
+      <div className="relative w-full overflow-x-auto select-none no-scrollbar">
         <svg
           viewBox={`0 0 ${width} ${height}`}
-          className="w-full h-52 overflow-visible select-none"
+          className="w-full h-52 sm:h-56 overflow-visible select-none"
         >
           <defs>
-            {/* Gradient Fill for Area */}
-            <linearGradient id="curveGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.45" />
-              <stop offset="100%" stopColor="#06b6d4" stopOpacity="0.0" />
-            </linearGradient>
-
-            {/* Stroke Line Gradient */}
-            <linearGradient id="lineGradient" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stopColor="#38bdf8" />
-              <stop offset="50%" stopColor="#06b6d4" />
-              <stop offset="100%" stopColor="#818cf8" />
-            </linearGradient>
+            {metricGrad.areaGrad}
+            {metricGrad.lineGrad}
           </defs>
 
           {/* Area under curve */}
-          <path d={areaPath} fill="url(#curveGradient)" />
+          <path d={areaPath} fill="url(#curveAreaGrad)" />
 
           {/* Curve Stroke */}
           <path
             d={linePath}
             fill="none"
-            stroke="url(#lineGradient)"
+            stroke="url(#curveLineGrad)"
             strokeWidth="3.5"
             strokeLinecap="round"
           />
@@ -241,7 +301,7 @@ export const InteractiveChart = ({
               y1={paddingY - 10}
               x2={activePoint.x}
               y2={height - 20}
-              stroke="#22d3ee"
+              stroke={metricGrad.activeColor}
               strokeWidth="1.5"
               strokeDasharray="3 3"
               opacity="0.8"
@@ -253,6 +313,7 @@ export const InteractiveChart = ({
             const isHovered = hoveredIndex === pt.index;
             const isMin = pt.val === minVal;
             const isMax = pt.val === maxVal;
+            const isCurrent = pt.item.isCurrent || pt.item.isNow;
 
             return (
               <g
@@ -267,37 +328,37 @@ export const InteractiveChart = ({
                 <circle
                   cx={pt.x}
                   cy={pt.y}
-                  r={isHovered ? 6.5 : isMin || isMax ? 4.5 : 2.5}
-                  fill={isHovered ? '#22d3ee' : isMax ? '#fbbf24' : isMin ? '#60a5fa' : '#ffffff'}
+                  r={isHovered ? 7 : isCurrent ? 5.5 : isMin || isMax ? 4.5 : 2.5}
+                  fill={isHovered ? '#ffffff' : isCurrent ? '#10b981' : isMax ? '#fbbf24' : isMin ? '#60a5fa' : '#ffffff'}
                   stroke="#0f172a"
-                  strokeWidth={isHovered ? 2.5 : 1.5}
+                  strokeWidth={isHovered ? 3 : isCurrent ? 2.5 : 1.5}
                   className="transition-all"
                 />
 
                 {/* Min / Max Peak Badges */}
-                {(isMax || isMin || isHovered) && (
+                {(isMax || isMin || isHovered || isCurrent) && (
                   <text
                     x={pt.x}
                     y={pt.y - 12}
                     textAnchor="middle"
-                    fill={isMax ? '#fcd34d' : isMin ? '#93c5fd' : '#ffffff'}
-                    fontSize={isHovered ? 12 : 10}
+                    fill={isCurrent ? '#34d399' : isMax ? '#fcd34d' : isMin ? '#93c5fd' : '#ffffff'}
+                    fontSize={isHovered || isCurrent ? 11 : 10}
                     fontWeight="bold"
-                    className="drop-shadow-sm pointer-events-none"
+                    className="drop-shadow pointer-events-none"
                   >
-                    {formatMetricDisplay(pt.val)}
+                    {isCurrent && !isHovered ? `Now (${formatMetricDisplay(pt.val)})` : formatMetricDisplay(pt.val)}
                   </text>
                 )}
 
-                {/* X-Axis Hour Labels (smartly spaced) */}
-                {(points.length <= 12 || pt.index % 2 === 0 || isHovered) && (
+                {/* X-Axis Hour Labels */}
+                {(points.length <= 12 || pt.index % 2 === 0 || isHovered || isCurrent) && (
                   <text
                     x={pt.x}
                     y={height - 6}
                     textAnchor="middle"
-                    fill={isHovered ? '#22d3ee' : '#94a3b8'}
+                    fill={isCurrent ? '#34d399' : isHovered ? '#fbbf24' : '#94a3b8'}
                     fontSize="10"
-                    fontWeight={isHovered ? 'bold' : 'normal'}
+                    fontWeight={isCurrent || isHovered ? 'bold' : 'normal'}
                     className="pointer-events-none"
                   >
                     {pt.item.time}
@@ -309,13 +370,13 @@ export const InteractiveChart = ({
         </svg>
       </div>
 
-      <div className="flex items-center justify-between text-[11px] text-slate-400 mt-2 px-2 border-t border-white/5 pt-2">
-        <span className="flex items-center gap-1">
-          <Info className="w-3.5 h-3.5 text-cyan-400" />
-          Hover over data points to inspect curve, temperature, and atmospheric readings.
+      <div className="flex items-center justify-between text-[11px] text-slate-400 mt-2 px-2 border-t border-white/5 pt-2 flex-wrap gap-2">
+        <span className="flex items-center gap-1.5">
+          <Info className="w-3.5 h-3.5 text-amber-400" />
+          Inspect curve for past recorded and future projected readings.
         </span>
         <span className="text-slate-300">
-          Peak: <strong className="text-white">{formatMetricDisplay(maxVal)}</strong> | Low: <strong className="text-white">{formatMetricDisplay(minVal)}</strong>
+          Peak: <strong className="text-amber-300">{formatMetricDisplay(maxVal)}</strong> | Low: <strong className="text-sky-300">{formatMetricDisplay(minVal)}</strong>
         </span>
       </div>
     </div>
