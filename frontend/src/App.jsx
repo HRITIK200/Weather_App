@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   fetchWeatherByCity,
   fetchWeatherByCoords,
@@ -53,6 +53,7 @@ export default function App() {
   const [isLocationRefineOpen, setIsLocationRefineOpen] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
   const [dbStatus, setDbStatus] = useState(false);
+  const hasWeatherLoadedRef = useRef(false);
 
   // Sync temperature unit preference
   const handleToggleUnit = (newUnit) => {
@@ -98,84 +99,77 @@ export default function App() {
     reloadFavs();
   }, [favoritesTab]);
 
-  // Initial Weather Load: Automatically detect present location on visit (Saved Preferred > High-Accuracy GPS > IP Fallback)
+  // Initial Weather Load: Google Weather-style Instant High-Precision Geolocation
   useEffect(() => {
-    let resolved = false;
+    let isCancelled = false;
 
-    // 0. Priority 1: If user has a verified/saved preferred location (e.g. Bijnor), load it instantly!
-    const savedPref = localStorage.getItem('preferred_weather_location');
-    if (savedPref) {
+    // 1. Instant Cache Check: If user previously visited and had verified coordinates, load them in 0ms!
+    const cachedCoords = localStorage.getItem('last_known_coords') || localStorage.getItem('preferred_weather_location');
+    if (cachedCoords) {
       try {
-        const pref = JSON.parse(savedPref);
-        if (pref.lat && pref.lon) {
-          resolved = true;
-          loadWeatherByCoords(pref.lat, pref.lon, pref);
-          return;
-        } else if (pref.name) {
-          resolved = true;
-          loadWeatherByCity(pref.name);
-          return;
+        const parsed = JSON.parse(cachedCoords);
+        if (parsed.lat && parsed.lon) {
+          loadWeatherByCoords(parsed.lat, parsed.lon, parsed);
         }
       } catch (e) {}
     }
 
-    // Helper: Detect present location via IP if browser GPS is delayed or blocked
-    const attemptAutoDetect = async () => {
-      try {
-        const detected = await detectPresentLocation();
-        if (detected && detected.lat && detected.lon && !resolved) {
-          resolved = true;
-          await loadWeatherByCoords(detected.lat, detected.lon, {
-            customName: detected.city,
-            subtitle: [detected.region, detected.country].filter(Boolean).join(', '),
-            postcode: detected.postcode,
-            areaType: 'city',
-          });
-          return true;
-        }
-      } catch (e) {
-        console.warn('Auto present location detection fallback warning:', e);
-      }
-      return false;
-    };
-
-    // 1. High-Accuracy Hardware Geolocation (Wi-Fi triangulation)
+    // 2. Query Device Hardware / Wi-Fi Geolocation with High Accuracy
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         async (position) => {
-          resolved = true;
+          if (isCancelled) return;
           const { latitude, longitude } = position.coords;
+          // Store verified coordinates so future loads are instantaneous
+          localStorage.setItem('last_known_coords', JSON.stringify({ lat: latitude, lon: longitude }));
           await loadWeatherByCoords(latitude, longitude);
         },
-        async () => {
-          // If browser permission denied or unavailable, auto-detect user's present location
-          if (!resolved) {
-            const ok = await attemptAutoDetect();
-            if (!ok) loadWeatherByCity('Bijnor');
+        async (geoErr) => {
+          if (isCancelled) return;
+          console.warn('Device GPS unavailable or permission blocked:', geoErr.message);
+
+          // Only if no weather data is loaded yet, attempt IP location fallback
+          if (!hasWeatherLoadedRef.current) {
+            try {
+              const detected = await detectPresentLocation();
+              if (detected && detected.lat && detected.lon && !isCancelled) {
+                await loadWeatherByCoords(detected.lat, detected.lon, {
+                  customName: detected.city,
+                  subtitle: [detected.region, detected.country].filter(Boolean).join(', '),
+                  postcode: detected.postcode,
+                  areaType: 'city',
+                });
+              }
+            } catch (ipErr) {
+              console.warn('IP fallback warning:', ipErr.message);
+            }
           }
         },
         {
           enableHighAccuracy: true,
-          timeout: 6000,
+          timeout: 10000,
           maximumAge: 0,
         }
       );
-
-      // 2. Safety Timer: If user takes time to click "Allow" on location popup,
-      // show present location via IP instead of staying blank
-      const safetyTimer = setTimeout(async () => {
-        if (!resolved && !weather) {
-          await attemptAutoDetect();
-        }
-      }, 2500);
-
-      return () => clearTimeout(safetyTimer);
     } else {
-      // Browser doesn't support geolocation -> auto-detect present location
-      attemptAutoDetect().then((ok) => {
-        if (!ok) loadWeatherByCity('Bijnor');
-      });
+      // Browser does not support geolocation API
+      if (!hasWeatherLoadedRef.current) {
+        detectPresentLocation().then((detected) => {
+          if (detected?.lat && detected?.lon && !isCancelled) {
+            loadWeatherByCoords(detected.lat, detected.lon, {
+              customName: detected.city,
+              subtitle: [detected.region, detected.country].filter(Boolean).join(', '),
+              postcode: detected.postcode,
+              areaType: 'city',
+            });
+          }
+        });
+      }
     }
+
+    return () => {
+      isCancelled = true;
+    };
   }, []);
 
   // Load weather & forecast by City
@@ -191,6 +185,7 @@ export default function App() {
 
       setWeather(currentData);
       setForecast(forecastData);
+      hasWeatherLoadedRef.current = true;
 
       // Refresh search history list in background
       try {
@@ -248,6 +243,7 @@ export default function App() {
 
       setWeather(currentData);
       setForecast(forecastData);
+      hasWeatherLoadedRef.current = true;
 
       try {
         const updatedHistory = await fetchHistory();
@@ -274,14 +270,14 @@ export default function App() {
 
       setWeather(currentData);
       setForecast(forecastData);
+      hasWeatherLoadedRef.current = true;
 
       try {
         const updatedHistory = await fetchHistory();
         setHistory(updatedHistory || []);
       } catch (e) {}
     } catch (err) {
-      setError('Unable to fetch weather for your present location.');
-      loadWeatherByCity('Delhi');
+      setError('Unable to fetch weather for your present location. Please use search to find your city.');
     } finally {
       setLoading(false);
       setIsLocating(false);

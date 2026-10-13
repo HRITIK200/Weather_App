@@ -24,8 +24,6 @@ export const CurrentWeatherCard = ({ weather, unit, onOpenLocationRefine, onSele
 
   const accents = getConditionAccents(main || 'clear');
 
-  const isMeerutGateway = (weather.displayName || name || '').toLowerCase().includes('meerut');
-
   // Temperature gradient styling based on warmth
   const tempGradient =
     temp >= 28
@@ -69,31 +67,12 @@ export const CurrentWeatherCard = ({ weather, unit, onOpenLocationRefine, onSele
                 type="button"
                 onClick={onOpenLocationRefine}
                 className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/40 text-cyan-200 hover:text-white transition-all shadow-sm active:scale-95 cursor-pointer"
-                title="Refine or change your exact town, village, or PIN code"
+                title="Change or refine to your exact town, village, or PIN code"
               >
-                <span>📍 Refine Location</span>
+                <span>📍 Change Location</span>
               </button>
             )}
           </div>
-
-          {/* Quick Gateway Correction Banner: If detected as Meerut, offer 1-click Bijnor switch */}
-          {isMeerutGateway && onSelectQuickLocation && (
-            <div className="mt-1 mb-3 p-2.5 rounded-2xl bg-gradient-to-r from-amber-500/20 to-orange-500/15 border border-amber-400/40 flex flex-wrap items-center justify-between gap-2.5 text-xs">
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping shrink-0" />
-                <span className="text-amber-200 font-medium">
-                  Showing near Meerut (ISP Gateway). Are you in <strong>Bijnor</strong>?
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => onSelectQuickLocation({ name: 'Bijnor', subtitle: 'Bijnor, Uttar Pradesh', postcode: '246701', lat: 29.3724, lon: 78.1358 })}
-                className="px-3 py-1 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs transition-all shadow-md shrink-0 active:scale-95"
-              >
-                Set to Bijnor
-              </button>
-            </div>
-          )}
 
           {/* Locality Subtitle & Postal Details */}
           {(weather.subtitle || weather.postcode) && (

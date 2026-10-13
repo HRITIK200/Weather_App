@@ -228,30 +228,43 @@ export const reverseGeocodeLocation = async (lat, lon) => {
 
     if (photonRes.data?.features?.length > 0) {
       const props = photonRes.data.features[0].properties || {};
-      const name = props.name || props.district || props.city || props.town || props.village;
-      if (name) {
-        const subtitleParts = [
-          props.district && props.district !== name ? props.district : null,
-          props.city && props.city !== name && props.city !== props.district ? props.city : null,
-          props.county && props.county !== name && props.county !== props.district ? props.county : null,
-          props.state,
-          props.country,
-        ].filter(Boolean);
+      const isMicroFeature =
+        props.osm_key === 'amenity' ||
+        props.osm_key === 'shop' ||
+        props.osm_key === 'building' ||
+        props.osm_key === 'tourism' ||
+        props.osm_key === 'highway' ||
+        props.type === 'house';
 
-        return {
-          name,
-          displayName: `${name}${subtitleParts.length > 0 ? ', ' + subtitleParts.join(', ') : ''}`,
-          subtitle: subtitleParts.join(', '),
-          district: props.district || props.county || props.city,
-          city: props.city || props.town || props.village,
-          state: props.state,
-          country: props.country,
-          postcode: props.postcode,
-          type: props.type || props.osm_value || 'locality',
-          lat: parseFloat(lat),
-          lon: parseFloat(lon),
-        };
-      }
+      const localityName = props.suburb || props.neighbourhood || props.village || props.town || props.city || props.county;
+      const districtName = props.district;
+
+      // Prioritize city/town/village/suburb over specific building or POI
+      const name = isMicroFeature
+        ? (localityName || districtName || props.name || 'Local Area')
+        : (localityName || props.name || districtName || 'Local Area');
+
+      const subtitleParts = [
+        props.suburb && props.suburb !== name ? props.suburb : null,
+        districtName && districtName !== name ? districtName : null,
+        props.city && props.city !== name && props.city !== districtName ? props.city : null,
+        props.state,
+        props.country,
+      ].filter(Boolean);
+
+      return {
+        name,
+        displayName: `${name}${subtitleParts.length > 0 ? ', ' + subtitleParts.join(', ') : ''}`,
+        subtitle: subtitleParts.join(', '),
+        district: districtName || props.county || localityName,
+        city: props.city || localityName,
+        state: props.state,
+        country: props.country,
+        postcode: props.postcode,
+        type: props.type || props.osm_value || 'locality',
+        lat: parseFloat(lat),
+        lon: parseFloat(lon),
+      };
     }
   } catch (err) {
     console.warn('⚠️ [reverse-geo]: Photon reverse fallback:', err.message);
