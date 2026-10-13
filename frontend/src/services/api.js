@@ -5,6 +5,50 @@ const api = axios.create({
   timeout: 10000,
 });
 
+export const detectPresentLocation = async () => {
+  // 1. Try backend IP detection endpoint
+  try {
+    const res = await api.get('/weather/detect-location', { timeout: 4500 });
+    if (res.data?.data?.lat && res.data?.data?.lon) {
+      return res.data.data;
+    }
+  } catch (err) {
+    // Continue to client-side direct fallback
+  }
+
+  // 2. Client-side fast IP fallback (ipwho.is)
+  try {
+    const clientRes = await axios.get('https://ipwho.is/', { timeout: 3500 });
+    if (clientRes.data && clientRes.data.success !== false && clientRes.data.latitude) {
+      return {
+        city: clientRes.data.city,
+        region: clientRes.data.region,
+        country: clientRes.data.country,
+        lat: clientRes.data.latitude,
+        lon: clientRes.data.longitude,
+        postcode: clientRes.data.postal,
+      };
+    }
+  } catch (e) {}
+
+  // 3. Client-side secondary fallback (BigDataCloud client)
+  try {
+    const bdcRes = await axios.get('https://api.bigdatacloud.net/data/reverse-geocode-client', { timeout: 3500 });
+    if (bdcRes.data?.latitude) {
+      return {
+        city: bdcRes.data.city || bdcRes.data.locality,
+        region: bdcRes.data.principalSubdivision,
+        country: bdcRes.data.countryName,
+        lat: bdcRes.data.latitude,
+        lon: bdcRes.data.longitude,
+        postcode: bdcRes.data.postcode,
+      };
+    }
+  } catch (e) {}
+
+  return null;
+};
+
 export const searchLocations = async (query) => {
   if (!query || query.trim().length < 2) return [];
   const res = await api.get('/weather/search-locations', { params: { q: query.trim() } });

@@ -194,6 +194,165 @@ export const searchLocations = async (query) => {
 };
 
 /**
+ * Reverse Geocode Coordinates to pinpoint small areas, villages, sectors, colonies, PIN codes,
+ * districts, states, and cities worldwide.
+ */
+export const reverseGeocodeLocation = async (lat, lon) => {
+  if (!lat || !lon) return null;
+
+  // 1. Primary: Photon OpenStreetMap Reverse Geocoding (high precision street, sector, locality level)
+  try {
+    const photonRes = await axios.get('https://photon.komoot.io/reverse', {
+      params: { lat, lon },
+      timeout: 4500,
+    });
+
+    if (photonRes.data?.features?.length > 0) {
+      const props = photonRes.data.features[0].properties || {};
+      const name = props.name || props.district || props.city || props.town || props.village;
+      if (name) {
+        const subtitleParts = [
+          props.district && props.district !== name ? props.district : null,
+          props.city && props.city !== name && props.city !== props.district ? props.city : null,
+          props.county && props.county !== name && props.county !== props.district ? props.county : null,
+          props.state,
+          props.country,
+        ].filter(Boolean);
+
+        return {
+          name,
+          displayName: `${name}${subtitleParts.length > 0 ? ', ' + subtitleParts.join(', ') : ''}`,
+          subtitle: subtitleParts.join(', '),
+          district: props.district || props.county || props.city,
+          city: props.city || props.town || props.village,
+          state: props.state,
+          country: props.country,
+          postcode: props.postcode,
+          type: props.type || props.osm_value || 'locality',
+          lat: parseFloat(lat),
+          lon: parseFloat(lon),
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('⚠️ [reverse-geo]: Photon reverse fallback:', err.message);
+  }
+
+  // 2. Secondary: BigDataCloud Client Reverse Geocode (free, fast, highly accurate for India & worldwide)
+  try {
+    const bdcRes = await axios.get('https://api.bigdatacloud.net/data/reverse-geocode-client', {
+      params: { latitude: lat, longitude: lon, localityLanguage: 'en' },
+      timeout: 4000,
+    });
+
+    if (bdcRes.data && (bdcRes.data.locality || bdcRes.data.city)) {
+      const data = bdcRes.data;
+      const name = data.locality || data.city;
+      const subtitleParts = [
+        data.locality && data.city !== data.locality ? data.city : null,
+        data.principalSubdivision,
+        data.countryName,
+      ].filter(Boolean);
+
+      return {
+        name,
+        displayName: `${name}${subtitleParts.length > 0 ? ', ' + subtitleParts.join(', ') : ''}`,
+        subtitle: subtitleParts.join(', '),
+        district: data.localityInfo?.administrative?.[2]?.name || data.city,
+        city: data.city,
+        state: data.principalSubdivision,
+        country: data.countryName,
+        postcode: data.postcode,
+        type: 'locality',
+        lat: parseFloat(lat),
+        lon: parseFloat(lon),
+      };
+    }
+  } catch (err) {
+    console.warn('⚠️ [reverse-geo]: BDC reverse fallback:', err.message);
+  }
+
+  // 3. Tertiary: OpenWeather Reverse Geocoding
+  try {
+    const owRes = await axios.get('http://api.openweathermap.org/geo/1.0/reverse', {
+      params: { lat, lon, limit: 1, appid: API_KEY },
+      timeout: 4000,
+    });
+
+    if (owRes.data?.length > 0) {
+      const item = owRes.data[0];
+      return {
+        name: item.name,
+        displayName: [item.name, item.state, item.country].filter(Boolean).join(', '),
+        subtitle: [item.state, item.country].filter(Boolean).join(', '),
+        state: item.state,
+        country: item.country,
+        type: 'city',
+        lat: parseFloat(lat),
+        lon: parseFloat(lon),
+      };
+    }
+  } catch (err) {
+    console.warn('⚠️ [reverse-geo]: OpenWeather reverse fallback:', err.message);
+  }
+
+  return null;
+};
+
+/**
+ * Automatically detect user's present location via Client IP Geolocation
+ */
+export const detectLocationByIP = async (clientIp) => {
+  const isPrivate =
+    !clientIp ||
+    clientIp === '127.0.0.1' ||
+    clientIp === '::1' ||
+    clientIp.startsWith('192.168.') ||
+    clientIp.startsWith('10.') ||
+    clientIp.startsWith('172.16.');
+
+  const queryIp = isPrivate ? '' : clientIp;
+
+  // 1. ipwho.is
+  try {
+    const res = await axios.get(`https://ipwho.is/${queryIp}`, { timeout: 4500 });
+    if (res.data && res.data.success !== false && res.data.latitude) {
+      return {
+        city: res.data.city,
+        region: res.data.region,
+        country: res.data.country,
+        countryCode: res.data.country_code,
+        lat: res.data.latitude,
+        lon: res.data.longitude,
+        postcode: res.data.postal,
+      };
+    }
+  } catch (err) {
+    console.warn('⚠️ [ip-detect]: ipwho fallback:', err.message);
+  }
+
+  // 2. bigdatacloud reverse-geocode-client
+  try {
+    const res2 = await axios.get('https://api.bigdatacloud.net/data/reverse-geocode-client', { timeout: 4500 });
+    if (res2.data && res2.data.latitude) {
+      return {
+        city: res2.data.city || res2.data.locality,
+        region: res2.data.principalSubdivision,
+        country: res2.data.countryName,
+        countryCode: res2.data.countryCode,
+        lat: res2.data.latitude,
+        lon: res2.data.longitude,
+        postcode: res2.data.postcode,
+      };
+    }
+  } catch (err) {
+    console.warn('⚠️ [ip-detect]: BDC fallback:', err.message);
+  }
+
+  return null;
+};
+
+/**
  * Helper to map WMO Weather interpretation codes to OpenWeather icons & descriptions
  */
 const mapWmoCode = (code, isDay = true) => {

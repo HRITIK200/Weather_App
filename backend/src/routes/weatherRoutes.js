@@ -5,10 +5,12 @@ import {
   getWeatherForecast,
   compareCitiesWeather,
   searchLocationsHandler,
+  detectLocationHandler,
 } from '../controllers/weatherController.js';
 
 const router = express.Router();
 
+router.get('/detect-location', detectLocationHandler);
 router.get('/search-locations', searchLocationsHandler);
 router.get('/', getCurrentWeather);
 router.get('/coordinates', getWeatherByCoords);

@@ -10,6 +10,7 @@ import {
   removeFavoriteCity,
   checkSystemHealth,
   fetchIndianStatesList,
+  detectPresentLocation,
 } from './services/api';
 import { Header } from './components/Header';
 import { SearchBar } from './components/SearchBar';
@@ -95,21 +96,66 @@ export default function App() {
     reloadFavs();
   }, [favoritesTab]);
 
-  // Initial Weather Load: Try Geolocation first, else default to Delhi
+  // Initial Weather Load: Automatically detect present location on visit (High-Accuracy GPS + Instant IP Detection)
   useEffect(() => {
+    let resolved = false;
+
+    // Helper: Seamlessly detect present location via IP if browser GPS is delayed or blocked
+    const attemptAutoDetect = async () => {
+      try {
+        const detected = await detectPresentLocation();
+        if (detected && detected.lat && detected.lon && !resolved) {
+          resolved = true;
+          await loadWeatherByCoords(detected.lat, detected.lon, {
+            customName: detected.city,
+            subtitle: [detected.region, detected.country].filter(Boolean).join(', '),
+            postcode: detected.postcode,
+            areaType: 'city',
+          });
+          return true;
+        }
+      } catch (e) {
+        console.warn('Auto present location detection fallback warning:', e);
+      }
+      return false;
+    };
+
+    // 1. High-Accuracy Browser Geolocation
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         async (position) => {
+          resolved = true;
           const { latitude, longitude } = position.coords;
-          loadWeatherByCoords(latitude, longitude);
+          await loadWeatherByCoords(latitude, longitude);
         },
-        () => {
-          loadWeatherByCity('Delhi');
+        async () => {
+          // If browser permission denied or unavailable, immediately auto-detect user's true location
+          if (!resolved) {
+            const ok = await attemptAutoDetect();
+            if (!ok) loadWeatherByCity('Delhi');
+          }
         },
-        { timeout: 7000 }
+        {
+          enableHighAccuracy: true,
+          timeout: 6000,
+          maximumAge: 0,
+        }
       );
+
+      // 2. Safety Timer: If user takes time to click "Allow" on location popup,
+      // start showing their true present city immediately instead of staying blank or defaulting to Delhi
+      const safetyTimer = setTimeout(async () => {
+        if (!resolved && !weather) {
+          await attemptAutoDetect();
+        }
+      }, 2500);
+
+      return () => clearTimeout(safetyTimer);
     } else {
-      loadWeatherByCity('Delhi');
+      // Browser doesn't support geolocation -> auto-detect present location
+      attemptAutoDetect().then((ok) => {
+        if (!ok) loadWeatherByCity('Delhi');
+      });
     }
   }, []);
 
@@ -171,14 +217,14 @@ export default function App() {
     }
   };
 
-  // Load weather by Coords
-  const loadWeatherByCoords = async (lat, lon) => {
+  // Load weather by Coords (with optional locality metadata)
+  const loadWeatherByCoords = async (lat, lon, extra = {}) => {
     try {
       setLoading(true);
       setError(null);
 
       const [currentData, forecastData] = await Promise.all([
-        fetchWeatherByCoords(lat, lon),
+        fetchWeatherByCoords(lat, lon, extra),
         fetchForecast({ lat, lon }),
       ]);
 
@@ -190,7 +236,7 @@ export default function App() {
         setHistory(updatedHistory || []);
       } catch (e) {}
     } catch (err) {
-      setError('Unable to fetch weather for your GPS location.');
+      setError('Unable to fetch weather for your present location.');
       loadWeatherByCity('Delhi');
     } finally {
       setLoading(false);
@@ -198,7 +244,7 @@ export default function App() {
     }
   };
 
-  // Handler for GPS trigger
+  // Handler for GPS trigger ("Locate Me" button)
   const handleLocateMe = () => {
     if (!navigator.geolocation) {
       setError('Geolocation is not supported by your browser.');
@@ -206,15 +252,36 @@ export default function App() {
     }
 
     setIsLocating(true);
+    setError(null);
+
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         loadWeatherByCoords(pos.coords.latitude, pos.coords.longitude);
       },
-      (err) => {
-        setError('Location permission denied or unavailable.');
+      async (err) => {
+        console.warn('GPS prompt denied or unavailable, attempting auto-detection fallback:', err.message);
+        try {
+          const detected = await detectPresentLocation();
+          if (detected && detected.lat && detected.lon) {
+            await loadWeatherByCoords(detected.lat, detected.lon, {
+              customName: detected.city,
+              subtitle: [detected.region, detected.country].filter(Boolean).join(', '),
+              postcode: detected.postcode,
+              areaType: 'city',
+            });
+            setIsLocating(false);
+            return;
+          }
+        } catch (e) {}
+
+        setError('Location permission denied or unavailable. Please enable browser location permissions.');
         setIsLocating(false);
       },
-      { timeout: 8000 }
+      {
+        enableHighAccuracy: true,
+        timeout: 9000,
+        maximumAge: 0,
+      }
     );
   };
 

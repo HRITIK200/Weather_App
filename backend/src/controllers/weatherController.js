@@ -195,6 +195,22 @@ export const getWeatherByCoords = async (req, res, next) => {
       formatted.subtitle = subtitle || '';
       formatted.areaType = areaType || 'locality';
       if (postcode) formatted.postcode = postcode;
+    } else {
+      // Auto Reverse-Geocode Coordinates to pinpoint neighborhood, village, town, sector, PIN code
+      try {
+        const reverseLoc = await weatherService.reverseGeocodeLocation(lat, lon);
+        if (reverseLoc) {
+          formatted.displayName = reverseLoc.name || formatted.name;
+          formatted.stationName = formatted.name;
+          formatted.subtitle = reverseLoc.subtitle || `${reverseLoc.state || ''}, ${formatted.country}`;
+          formatted.district = reverseLoc.district;
+          formatted.state = reverseLoc.state;
+          formatted.areaType = reverseLoc.type || 'locality';
+          if (reverseLoc.postcode) formatted.postcode = reverseLoc.postcode;
+        }
+      } catch (revErr) {
+        console.warn('⚠️ [reverse-geo]: Coordinate reverse resolution fallback:', revErr.message);
+      }
     }
 
     // Record search history
@@ -213,6 +229,25 @@ export const getWeatherByCoords = async (req, res, next) => {
     return res.status(200).json({
       success: true,
       data: formatted,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+/**
+ * GET /api/weather/detect-location
+ * Automatically detects client location via IP Geolocation
+ */
+export const detectLocationHandler = async (req, res, next) => {
+  try {
+    const rawIp = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '';
+    const clientIp = rawIp.split(',')[0].trim();
+    const detected = await weatherService.detectLocationByIP(clientIp);
+
+    return res.status(200).json({
+      success: true,
+      data: detected,
     });
   } catch (error) {
     return next(error);
