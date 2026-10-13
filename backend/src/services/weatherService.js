@@ -86,6 +86,7 @@ export const fetchAirPollution = async (lat, lon) => {
 export const searchLocations = async (query) => {
   if (!query || query.trim().length < 2) return [];
   const q = query.trim();
+  const normalizedLower = q.toLowerCase();
   const results = [];
   const seenKeys = new Set();
 
@@ -96,6 +97,24 @@ export const searchLocations = async (query) => {
       results.push(item);
     }
   };
+
+  // Indian city and town phonetic typo aliases (e.g. binjor -> Bijnor)
+  if (['binjor', 'bijnore', 'bijnor', 'bijnaur'].includes(normalizedLower)) {
+    addResult({
+      id: 'city-bijnor-up',
+      name: 'Bijnor',
+      displayName: 'Bijnor, Uttar Pradesh, India',
+      subtitle: 'Bijnor District, Uttar Pradesh, India',
+      district: 'Bijnor',
+      state: 'Uttar Pradesh',
+      country: 'India',
+      countryCode: 'IN',
+      postcode: '246701',
+      type: 'city',
+      lat: 29.3724,
+      lon: 78.1358,
+    });
+  }
 
   // 1. Special check: If 6-digit number (Indian Postal PIN Code)
   if (/^\d{6}$/.test(q)) {

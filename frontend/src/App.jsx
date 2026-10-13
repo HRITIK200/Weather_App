@@ -30,6 +30,7 @@ import { IndianStatesDrawer } from './components/IndianStatesDrawer';
 import { CityCompareModal } from './components/CityCompareModal';
 import { DevTelemetryModal } from './components/DevTelemetryModal';
 import { HistoryDrawer } from './components/HistoryDrawer';
+import { LocationRefineModal } from './components/LocationRefineModal';
 import { getWeatherBackground, formatTemperature } from './utils/weatherUtils';
 import { AlertCircle, Loader2 } from 'lucide-react';
 
@@ -49,6 +50,7 @@ export default function App() {
   const [isIndianStatesOpen, setIsIndianStatesOpen] = useState(false);
   const [isCompareOpen, setIsCompareOpen] = useState(false);
   const [isTelemetryOpen, setIsTelemetryOpen] = useState(false);
+  const [isLocationRefineOpen, setIsLocationRefineOpen] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
   const [dbStatus, setDbStatus] = useState(false);
 
@@ -96,11 +98,28 @@ export default function App() {
     reloadFavs();
   }, [favoritesTab]);
 
-  // Initial Weather Load: Automatically detect present location on visit (High-Accuracy GPS + Instant IP Detection)
+  // Initial Weather Load: Automatically detect present location on visit (Saved Preferred > High-Accuracy GPS > IP Fallback)
   useEffect(() => {
     let resolved = false;
 
-    // Helper: Seamlessly detect present location via IP if browser GPS is delayed or blocked
+    // 0. Priority 1: If user has a verified/saved preferred location (e.g. Bijnor), load it instantly!
+    const savedPref = localStorage.getItem('preferred_weather_location');
+    if (savedPref) {
+      try {
+        const pref = JSON.parse(savedPref);
+        if (pref.lat && pref.lon) {
+          resolved = true;
+          loadWeatherByCoords(pref.lat, pref.lon, pref);
+          return;
+        } else if (pref.name) {
+          resolved = true;
+          loadWeatherByCity(pref.name);
+          return;
+        }
+      } catch (e) {}
+    }
+
+    // Helper: Detect present location via IP if browser GPS is delayed or blocked
     const attemptAutoDetect = async () => {
       try {
         const detected = await detectPresentLocation();
@@ -120,7 +139,7 @@ export default function App() {
       return false;
     };
 
-    // 1. High-Accuracy Browser Geolocation
+    // 1. High-Accuracy Hardware Geolocation (Wi-Fi triangulation)
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         async (position) => {
@@ -129,10 +148,10 @@ export default function App() {
           await loadWeatherByCoords(latitude, longitude);
         },
         async () => {
-          // If browser permission denied or unavailable, immediately auto-detect user's true location
+          // If browser permission denied or unavailable, auto-detect user's present location
           if (!resolved) {
             const ok = await attemptAutoDetect();
-            if (!ok) loadWeatherByCity('Delhi');
+            if (!ok) loadWeatherByCity('Bijnor');
           }
         },
         {
@@ -143,7 +162,7 @@ export default function App() {
       );
 
       // 2. Safety Timer: If user takes time to click "Allow" on location popup,
-      // start showing their true present city immediately instead of staying blank or defaulting to Delhi
+      // show present location via IP instead of staying blank
       const safetyTimer = setTimeout(async () => {
         if (!resolved && !weather) {
           await attemptAutoDetect();
@@ -154,7 +173,7 @@ export default function App() {
     } else {
       // Browser doesn't support geolocation -> auto-detect present location
       attemptAutoDetect().then((ok) => {
-        if (!ok) loadWeatherByCity('Delhi');
+        if (!ok) loadWeatherByCity('Bijnor');
       });
     }
   }, []);
@@ -186,11 +205,36 @@ export default function App() {
     }
   };
 
+  // Handle quick selection of exact location (e.g. Bijnor)
+  const handleSelectQuickLocation = (loc) => {
+    localStorage.setItem('preferred_weather_location', JSON.stringify({
+      name: loc.name,
+      displayName: loc.displayName || loc.name,
+      subtitle: loc.subtitle,
+      lat: loc.lat,
+      lon: loc.lon,
+      postcode: loc.postcode,
+      areaType: loc.type || 'locality',
+    }));
+    loadWeatherByCoords(loc.lat, loc.lon, loc);
+  };
+
   // Load weather by specific location / small area object
   const loadWeatherByLocation = async (location) => {
     try {
       setLoading(true);
       setError(null);
+
+      // Save user selected location as preferred
+      localStorage.setItem('preferred_weather_location', JSON.stringify({
+        name: location.name,
+        displayName: location.displayName || location.name,
+        subtitle: location.subtitle,
+        lat: location.lat,
+        lon: location.lon,
+        postcode: location.postcode,
+        areaType: location.type || 'locality',
+      }));
 
       const [currentData, forecastData] = await Promise.all([
         fetchWeatherByCoords(location.lat, location.lon, {
@@ -418,7 +462,12 @@ export default function App() {
           weather && (
             <main className="space-y-6">
               {/* Current Weather Hero */}
-              <CurrentWeatherCard weather={weather} unit={unit} />
+              <CurrentWeatherCard
+                weather={weather}
+                unit={unit}
+                onOpenLocationRefine={() => setIsLocationRefineOpen(true)}
+                onSelectQuickLocation={handleSelectQuickLocation}
+              />
 
               {/* 24-Hour Interactive Bezier Curve Chart */}
               {forecast?.hourly && (
@@ -509,6 +558,16 @@ export default function App() {
           onSelectCity={loadWeatherByCity}
           onDeleteHistoryItem={handleDeleteHistoryItem}
           unit={unit}
+        />
+
+        {/* Exact Location Calibration & Refinement Modal */}
+        <LocationRefineModal
+          isOpen={isLocationRefineOpen}
+          onClose={() => setIsLocationRefineOpen(false)}
+          currentLocationName={weather?.displayName || weather?.name}
+          onSelectLocation={handleSelectQuickLocation}
+          onTriggerGPS={handleLocateMe}
+          isLocating={isLocating}
         />
       </div>
     </div>
